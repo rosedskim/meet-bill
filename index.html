@@ -36,7 +36,8 @@ body {
   font: 16px/1.5 system-ui, -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
 }
 main { max-width: 640px; margin: 0 auto; padding: 16px; }
-h1 { font-size: 1.4rem; margin: 0 0 16px; }
+h1 { font-size: 1.4rem; margin: 0; }
+.top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 16px; }
 h2 { font-size: 1rem; margin: 0 0 12px; }
 section {
   background: var(--surface);
@@ -88,6 +89,10 @@ form button {
 }
 .empty { color: var(--muted); font-size: 0.875rem; }
 section + section { margin-top: 16px; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px; }
+.meta input { flex: 1 1 140px; }
+.meta .title { flex: 2 1 160px; }
+.meta .memo-input { flex-basis: 100%; }
 .section-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 12px; }
 .section-head h2 { margin: 0; }
 .solid { background: var(--accent); color: var(--accent-text); padding: 8px 16px; }
@@ -128,11 +133,13 @@ section + section { margin-top: 16px; }
 #paid h3 { margin: 16px 0 0; font-size: 1rem; }
 .summary { width: 100%; margin-top: 12px; }
 .result { border: 2px solid var(--accent); padding: 8px; }
-.result h2 { padding: 0 4px; }
+.result h2 { padding: 0 4px; overflow-wrap: anywhere; }
+.memo, .csv-row { margin: 8px 0 0; padding: 0 4px; }
+.memo { overflow-wrap: anywhere; }
 /* 열 10개짜리 표가 폰 폭에서 글자 하한에 걸리지 않도록 결과 카드만 화면 끝까지 넓힌다. */
 @media (max-width: 480px) {
   .result { margin-inline: -16px; padding: 4px 0; border-inline-width: 0; border-radius: 0; }
-  .result h2 { padding-inline: 16px; }
+  .result h2, .memo, .csv-row { padding-inline: 16px; }
 }
 .errors { margin: 0; padding-left: 20px; color: var(--danger); }
 .table-wrap { overflow-x: auto; }
@@ -153,7 +160,18 @@ th span { display: block; }
 </head>
 <body>
 <main>
-  <h1>모임 정산</h1>
+  <div class="top">
+    <h1>모임 정산</h1>
+    <button id="reset" type="button" class="outline">새로 시작</button>
+  </div>
+  <section>
+    <h2>모임 정보</h2>
+    <div class="meta">
+      <input class="title" data-field="title" type="text" placeholder="모임명 (선택, 예: 회식)" aria-label="모임명" autocomplete="off">
+      <input data-field="date" type="date" aria-label="날짜">
+      <input class="memo-input" data-field="memo" type="text" placeholder="예: 카카오뱅크 ○○○ 3333-..." aria-label="송금 메모" autocomplete="off">
+    </div>
+  </section>
   <section>
     <h2>인원</h2>
     <form id="member-form" autocomplete="off">
@@ -176,13 +194,13 @@ th span { display: block; }
     <button id="summarize" type="button" class="solid summary">요약</button>
   </section>
   <section id="result" class="result" hidden>
-    <h2>결과</h2>
+    <h2 id="result-title"></h2>
     <div id="result-body"></div>
   </section>
 </main>
 <script>
 // 이름이 키라서 fixed와 같이 __proto__ 같은 이름도 일반 키로 쓰이도록 프로토타입 없는 객체로 둔다.
-const state = { members: [], rounds: [], paid: Object.create(null) };
+const state = { members: [], rounds: [], paid: Object.create(null), title: '', date: today(), memo: '' };
 let memberNotice = '';
 let nextRoundId = 1;
 let summaryShown = false;
@@ -198,6 +216,89 @@ const addRoundBtn = document.getElementById('add-round');
 const summarizeBtn = document.getElementById('summarize');
 const resultEl = document.getElementById('result');
 const resultBodyEl = document.getElementById('result-body');
+const resultTitleEl = document.getElementById('result-title');
+const resetBtn = document.getElementById('reset');
+const metaInputs = document.querySelectorAll('[data-field]');
+
+function today() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function validDate(s) {
+  if (typeof s !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const [y, m, d] = s.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  return date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d;
+}
+
+const STORAGE_KEY = 'meet-bill:v1';
+const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+const isAmount = (n) => Number.isInteger(n) && n >= 0 && n <= 999999999999;
+
+// 이름이 키라서 JSON.parse가 만든 일반 객체를 그대로 쓰면 constructor 같은 이름에서 in 검사가 틀린다. 프로토타입 없는 객체에 다시 담는다.
+function amountsFor(source, names) {
+  const out = Object.create(null);
+  if (isObject(source)) {
+    for (const name of names) if (Object.hasOwn(source, name) && isAmount(source[name])) out[name] = source[name];
+  }
+  return out;
+}
+
+function restoreRounds(list, members) {
+  const seen = new Set();
+  const rounds = list.filter(isObject).map((r) => {
+    const picked = new Set(Array.isArray(r.participants) ? r.participants : []);
+    const participants = members.filter((m) => picked.has(m));
+    // id + 1이 정확한 정수로 남도록 상한을 둔다.
+    const id = Number.isInteger(r.id) && r.id > 0 && r.id < 1e9 && !seen.has(r.id) ? r.id : null;
+    if (id !== null) seen.add(id);
+    return {
+      id,
+      name: typeof r.name === 'string' ? r.name : '',
+      total: isAmount(r.total) ? r.total : null,
+      participants,
+      fixed: amountsFor(r.fixed, participants),
+    };
+  });
+  let next = Math.max(0, ...seen) + 1;
+  for (const r of rounds) if (r.id === null) r.id = next++;
+  return rounds;
+}
+
+// 저장된 값은 믿지 않는다. 모양이 틀리면 null을 돌려줘 빈 상태로 시작한다.
+function parseSaved(text) {
+  const data = JSON.parse(text);
+  if (!isObject(data) || !Array.isArray(data.members)) return null;
+  const members = [...new Set(data.members.filter((m) => typeof m === 'string').map((m) => m.trim()).filter(Boolean))];
+  return {
+    members,
+    rounds: restoreRounds(Array.isArray(data.rounds) ? data.rounds : [], members),
+    paid: amountsFor(data.paid, members),
+    title: typeof data.title === 'string' ? data.title : '',
+    date: validDate(data.date) ? data.date : '',
+    memo: typeof data.memo === 'string' ? data.memo : '',
+  };
+}
+
+function load() {
+  try {
+    return parseSaved(localStorage.getItem(STORAGE_KEY));
+  } catch {
+    return null;
+  }
+}
+
+// 내용이 하나도 없으면 저장하지 않고 지운다. 기본 날짜(오늘)가 저장돼 다음에 열 때 옛 날짜로 복원되는 것을 막는다.
+function save() {
+  const { members, rounds, paid, title, date, memo } = state;
+  try {
+    if (!members.length && !rounds.length && !title && !memo) localStorage.removeItem(STORAGE_KEY);
+    else localStorage.setItem(STORAGE_KEY, JSON.stringify({ members, rounds, paid, title, date, memo }));
+  } catch {
+    // 저장소가 막혔거나 가득 차도 앱은 저장 없이 계속 쓸 수 있어야 한다.
+  }
+}
 
 // 인원 입력칸은 HTML에 고정해 두고 render가 건드리지 않는다. 다시 그리면 타이핑 중 포커스가 사라진다.
 function renderMembers() {
@@ -486,9 +587,49 @@ function resultErrors(errors) {
   return [intro, list];
 }
 
+function resultTitle() {
+  const date = validDate(state.date) ? state.date.split('-').slice(1).map(Number).join('/') : '';
+  return [date, state.title.trim(), '정산'].filter(Boolean).join(' ');
+}
+
+const csvRemaining = (n) => (n === 0 ? '완료' : n < 0 ? '환급 ' + -n + '원' : String(n));
+
+// 스프레드시트가 수식으로 읽지 않도록 =, +, -, @로 시작하는 글자 앞에 '를 붙인다. 미참석 칸의 '-'는 수식이 아니라서 둔다.
+function csvField(value) {
+  let text = String(value);
+  if (/^[=+\-@]/.test(text) && text !== '-') text = "'" + text;
+  return '"' + text.replaceAll('"', '""') + '"';
+}
+
+function csvOf(result) {
+  const head = ['이름', ...state.rounds.map(roundLabel), '합계'];
+  if (result.showPaid) head.push('보낸 금액', '남은 금액');
+  const body = result.rows.map((row) => {
+    const line = [row.name, ...row.cells.map((c) => (c ? c.amount : '-')), row.total];
+    if (result.showPaid) line.push(row.paid ? row.paid : '-', csvRemaining(row.remaining));
+    return line;
+  });
+  const foot = ['합계', ...result.roundTotals, result.grandTotal];
+  if (result.showPaid) foot.push('', '');
+  return [head, ...body, foot].map((line) => line.map(csvField).join(',')).join('\r\n');
+}
+
+function downloadCsv(result) {
+  const blob = new Blob(['\ufeff' + csvOf(result)], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `meet-bill-${validDate(state.date) ? state.date : today()}.csv`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function renderResult() {
   resultEl.hidden = !summaryShown;
   if (!summaryShown) return;
+  resultTitleEl.textContent = resultTitle();
 
   if (!state.members.length || !state.rounds.length) {
     const empty = document.createElement('p');
@@ -505,7 +646,24 @@ function renderResult() {
   const wrap = document.createElement('div');
   wrap.className = 'table-wrap';
   wrap.append(resultTable(result));
-  resultBodyEl.replaceChildren(wrap);
+  const parts = [wrap];
+  const memo = state.memo.trim();
+  if (memo) {
+    const line = document.createElement('p');
+    line.className = 'memo';
+    line.textContent = '송금: ' + memo;
+    parts.push(line);
+  }
+  const csv = document.createElement('button');
+  csv.type = 'button';
+  csv.className = 'outline';
+  csv.textContent = 'CSV로 저장';
+  csv.addEventListener('click', () => downloadCsv(result));
+  const csvRow = document.createElement('div');
+  csvRow.className = 'csv-row';
+  csvRow.append(csv);
+  parts.push(csvRow);
+  resultBodyEl.replaceChildren(...parts);
   fitTable();
 }
 
@@ -517,6 +675,7 @@ function render({ inputs = true } = {}) {
     renderPaid();
   }
   renderResult();
+  save();
 }
 
 function addMember(raw) {
@@ -697,8 +856,33 @@ roundsEl.addEventListener('input', (e) => {
   render({ inputs: false });
 });
 
+for (const input of metaInputs) {
+  input.addEventListener('input', () => {
+    state[input.dataset.field] = input.value;
+    render({ inputs: false });
+  });
+}
+
+resetBtn.addEventListener('click', () => {
+  if (!confirm('입력한 내용을 모두 지우고 새로 시작할까요?')) return;
+  Object.assign(state, { members: [], rounds: [], paid: Object.create(null), title: '', date: today(), memo: '' });
+  memberNotice = '';
+  nextRoundId = 1;
+  summaryShown = false;
+  nameInput.value = '';
+  syncMetaInputs();
+  render();
+});
+
 window.addEventListener('resize', fitTable);
 
+function syncMetaInputs() {
+  for (const input of metaInputs) input.value = state[input.dataset.field];
+}
+
+Object.assign(state, load());
+nextRoundId = Math.max(0, ...state.rounds.map((r) => r.id)) + 1;
+syncMetaInputs();
 render();
 </script>
 </body>
