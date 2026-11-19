@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>모임 정산</title>
+<style>
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --text: #1c1e21;
+  --muted: #5f6670;
+  --border: #d5d9df;
+  --accent: #2f6fed;
+  --accent-text: #ffffff;
+  --danger: #c62828;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14161a;
+    --surface: #1f2329;
+    --text: #e8eaed;
+    --muted: #9aa1ab;
+    --border: #363c45;
+    --accent: #6c9bff;
+    --accent-text: #101318;
+    --danger: #ff8a80;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.5 system-ui, -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+}
+main { max-width: 640px; margin: 0 auto; padding: 16px; }
+h1 { font-size: 1.4rem; margin: 0 0 16px; }
+h2 { font-size: 1rem; margin: 0 0 12px; }
+section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+}
+form { display: flex; gap: 8px; }
+input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  color: inherit;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+button {
+  font: inherit;
+  cursor: pointer;
+  border: 0;
+  border-radius: 8px;
+}
+form button {
+  background: var(--accent);
+  color: var(--accent-text);
+  padding: 8px 16px;
+}
+.notice { min-height: 1.5em; margin: 8px 0 0; color: var(--danger); font-size: 0.875rem; }
+.tags { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 0; padding: 0; list-style: none; }
+.tags li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 4px 4px 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow-wrap: anywhere;
+}
+.tags button {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  color: var(--muted);
+  line-height: 1;
+}
+.empty { color: var(--muted); font-size: 0.875rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>모임 정산</h1>
+  <section>
+    <h2>인원</h2>
+    <form id="member-form" autocomplete="off">
+      <input id="member-name" type="text" placeholder="이름" aria-label="이름">
+      <button type="submit">등록</button>
+    </form>
+    <p id="member-notice" class="notice" role="status"></p>
+    <ul id="members" class="tags"></ul>
+  </section>
+</main>
+<script>
+const state = { members: [], rounds: [] };
+let memberNotice = '';
+
+const form = document.getElementById('member-form');
+const nameInput = document.getElementById('member-name');
+const noticeEl = document.getElementById('member-notice');
+const membersEl = document.getElementById('members');
+
+// 입력칸은 HTML에 고정해 두고 render가 건드리지 않는다. 다시 그리면 타이핑 중 포커스가 사라진다.
+function render() {
+  noticeEl.textContent = memberNotice;
+
+  const tags = state.members.map((name, i) => {
+    const li = document.createElement('li');
+    const label = document.createElement('span');
+    label.textContent = name;
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.textContent = '×';
+    del.setAttribute('aria-label', name + ' 삭제');
+    del.dataset.index = i;
+    li.append(label, del);
+    return li;
+  });
+  membersEl.replaceChildren(...tags);
+}
+
+function addMember(raw) {
+  const name = raw.trim();
+  if (!name) return false;
+  if (state.members.includes(name)) {
+    memberNotice = '이미 등록된 이름이에요';
+    return false;
+  }
+  state.members.push(name);
+  memberNotice = '';
+  return true;
+}
+
+form.addEventListener('submit', (e) => {
+  e.preventDefault();
+  if (addMember(nameInput.value)) nameInput.value = '';
+  render();
+  nameInput.focus();
+});
+
+nameInput.addEventListener('input', () => {
+  if (memberNotice) {
+    memberNotice = '';
+    render();
+  }
+});
+
+membersEl.addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-index]');
+  if (!btn) return;
+  state.members.splice(Number(btn.dataset.index), 1);
+  render();
+});
+
+render();
+</script>
+</body>
+</html>
