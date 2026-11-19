@@ -127,11 +127,15 @@ section + section { margin-top: 16px; }
 }
 .pick[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 .pick[aria-pressed="true"]::before { content: "\2713\00a0"; }
-.fixed-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 8px 0 0; }
-.fixed-row span { flex: 1 1 4em; min-width: 0; overflow-wrap: anywhere; }
-.fixed-row > input { flex: 2 1 140px; }
-.sent-check { display: flex; flex: none; align-items: center; gap: 4px; min-height: 36px; padding: 0 4px; cursor: pointer; }
-.sent-check input { flex: none; width: 20px; height: 20px; margin: 0; }
+.attendee { display: flex; align-items: center; gap: 4px; margin: 8px 0 0; }
+.who { flex: 0 1 5em; min-width: 2.5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.amount { position: relative; flex: 1 1 0; min-width: 5em; }
+.amount input { width: 100%; padding: 8px 4px; text-align: right; font-variant-numeric: tabular-nums; }
+/* Safari는 disabled 입력의 글자를 따로 흐리게 칠해서 -webkit-text-fill-color로 막는다. 자동 금액은 읽혀야 하는 값이다. */
+.amount input:disabled { color: var(--text); -webkit-text-fill-color: var(--text); opacity: 1; }
+.plus-one { position: absolute; left: 3px; top: 50%; transform: translateY(-50%); font-size: 0.625rem; color: var(--accent); pointer-events: none; }
+.check { display: flex; flex: none; align-items: center; gap: 2px; min-height: 36px; padding: 0 2px; font-size: 0.875rem; cursor: pointer; }
+.check input { flex: none; width: 20px; height: 20px; margin: 0; }
 .summary { width: 100%; margin-top: 12px; }
 .result { border: 2px solid var(--accent); padding: 8px; }
 .result h2 { padding: 0 4px; overflow-wrap: anywhere; }
@@ -376,34 +380,49 @@ function roundCard(round, i) {
     picks.append(pick);
   }
 
-  const fixedRows = round.participants.map((m) => {
+  const rows = round.participants.map((m) => {
     const row = document.createElement('div');
-    row.className = 'fixed-row';
+    row.className = 'attendee';
+    row.dataset.member = m;
     const who = document.createElement('span');
+    who.className = 'who';
+    who.title = m;
     who.textContent = m;
-    const sent = document.createElement('label');
-    sent.className = 'sent-check';
-    const check = document.createElement('input');
-    check.type = 'checkbox';
-    check.setAttribute('aria-label', n + ' ' + m + ' 보냄');
-    check.dataset.key = k('sent:' + m);
-    check.dataset.member = m;
-    check.checked = m in round.sent;
-    sent.append(check, '보냄');
-    const amount = document.createElement('input');
-    amount.type = 'text';
-    amount.inputMode = 'numeric';
-    amount.placeholder = '고정 금액(선택)';
-    amount.setAttribute('aria-label', n + ' ' + m + ' 고정 금액');
-    amount.autocomplete = 'off';
-    amount.dataset.key = k('fixed:' + m);
-    amount.dataset.member = m;
-    amount.value = round.fixed[m] ?? '';
-    row.append(who, sent, amount);
+    const amount = document.createElement('span');
+    amount.className = 'amount';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.inputMode = 'numeric';
+    input.setAttribute('aria-label', n + ' ' + m + ' 금액');
+    input.autocomplete = 'off';
+    input.dataset.key = k('amount:' + m);
+    input.dataset.member = m;
+    const plusOne = document.createElement('span');
+    plusOne.className = 'plus-one';
+    amount.append(input, plusOne);
+    const check = (field, text) => {
+      const label = document.createElement('label');
+      label.className = 'check';
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.setAttribute('aria-label', n + ' ' + m + ' ' + text);
+      box.dataset.key = k(field + ':' + m);
+      box.dataset.member = m;
+      box.dataset.field = field;
+      box.checked = m in round[field];
+      label.append(box, text);
+      return label;
+    };
+    row.append(who, amount, check('fixed', '고정'), check('sent', '보냄'));
     return row;
   });
 
-  card.append(head, fields, pickHead, picks, ...fixedRows);
+  const error = document.createElement('p');
+  error.className = 'notice card-error';
+  error.setAttribute('role', 'status');
+  error.hidden = true;
+
+  card.append(head, fields, pickHead, picks, ...rows, error);
   return card;
 }
 
@@ -424,6 +443,26 @@ function redraw(container, children, fallback) {
 
 function renderRounds() {
   redraw(roundsEl, state.rounds.map(roundCard), addRoundBtn);
+}
+
+// 금액 칸 값과 +1, 오류 문구는 카드를 다시 그리지 않고 제자리에서 고친다. 고정 칸은 사용자가 치는 중일 수 있어 상태와 다를 때만 쓴다.
+function refreshShares() {
+  state.rounds.forEach((round, i) => {
+    const card = roundsEl.children[i];
+    const { error, byName } = roundShares(state, i);
+    for (const row of card.querySelectorAll('.attendee')) {
+      const m = row.dataset.member;
+      const input = row.querySelector('input[type="text"]');
+      const share = byName?.get(m);
+      input.disabled = !(m in round.fixed);
+      if (input.disabled) input.value = share ? won(share.amount) : '-';
+      else if (Number(input.value) !== round.fixed[m]) input.value = round.fixed[m];
+      row.querySelector('.plus-one').textContent = share?.extra ? '+1' : '';
+    }
+    const notice = card.querySelector('.card-error');
+    notice.textContent = error ?? '';
+    notice.hidden = !error;
+  });
 }
 
 const won = (n) => n.toLocaleString('ko-KR');
@@ -624,10 +663,11 @@ function renderResult() {
   fitTable();
 }
 
-// 모든 상태 변경은 render를 거친다. 이름·총금액·고정 금액·보냄 input은 입력칸을 다시 그리면 포커스를 잃으므로 inputs: false로 결과만 갱신한다.
+// 모든 상태 변경은 render를 거친다. 이름·총금액·금액·고정·보냄 input은 입력칸을 다시 그리면 포커스를 잃으므로 inputs: false로 두고, 카드 금액과 결과만 갱신한다.
 function render({ inputs = true } = {}) {
   renderMembers();
   if (inputs) renderRounds();
+  refreshShares();
   renderResult();
   save();
 }
@@ -656,39 +696,46 @@ function distribute(people, amount) {
   return people.map((_, i) => ({ amount: base + (i >= firstExtra ? 1 : 0), extra: i >= firstExtra }));
 }
 
+// 카드와 결과표가 같은 분배를 보도록 한 차수의 계산은 여기에만 둔다.
+// missing은 입력이 덜 된 상태(결과표는 안내하고 카드는 조용히 -를 보인다), error는 고정 금액이 어긋난 상태(둘 다 안내한다).
+function roundShares(state, roundIndex) {
+  const round = state.rounds[roundIndex];
+  const label = roundLabel(round, roundIndex);
+  const attendees = state.members.filter((m) => round.participants.includes(m));
+  const missing = [];
+  if (round.total === null) missing.push(label + ': 총금액을 입력하세요');
+  else if (round.total <= 0) missing.push(label + ': 총금액은 0보다 커야 해요');
+  if (!attendees.length) missing.push(label + ': 참석자를 선택하세요');
+  if (missing.length) return { missing, error: null, byName: null };
+
+  const pinned = attendees.filter((m) => m in round.fixed);
+  const free = attendees.filter((m) => !(m in round.fixed));
+  const pinnedSum = pinned.reduce((sum, m) => sum + round.fixed[m], 0);
+  const rest = round.total - pinnedSum;
+  if (rest < 0) return { missing, error: label + ': 고정 금액의 합(' + won(pinnedSum) + '원)이 총금액보다 커요', byName: null };
+  if (!free.length && rest > 0) return { missing, error: label + ': 모두 고정인데 합(' + won(pinnedSum) + '원)이 총금액과 달라요', byName: null };
+  const split = distribute(free, rest);
+  const byName = new Map([
+    ...pinned.map((m) => [m, { amount: round.fixed[m], extra: false }]),
+    ...free.map((m, i) => [m, split[i]]),
+  ]);
+  return { missing, error: null, byName };
+}
+
 function calc(state) {
   const errors = [];
-  const shares = state.rounds.map((round, roundIndex) => {
-    const label = roundLabel(round, roundIndex);
-    const attendees = state.members.filter((m) => round.participants.includes(m));
-    const valid = round.total !== null && round.total > 0;
-    if (round.total === null) errors.push({ roundIndex, message: label + ': 총금액을 입력하세요' });
-    else if (!valid) errors.push({ roundIndex, message: label + ': 총금액은 0보다 커야 해요' });
-    if (!attendees.length) errors.push({ roundIndex, message: label + ': 참석자를 선택하세요' });
-    if (!valid || !attendees.length) return null;
-    const pinned = attendees.filter((m) => m in round.fixed);
-    const free = attendees.filter((m) => !(m in round.fixed));
-    const pinnedSum = pinned.reduce((sum, m) => sum + round.fixed[m], 0);
-    const rest = round.total - pinnedSum;
-    if (rest < 0) {
-      errors.push({ roundIndex, message: label + ': 고정 금액의 합(' + won(pinnedSum) + '원)이 총금액보다 커요' });
-      return null;
-    }
-    if (!free.length && rest > 0) {
-      errors.push({ roundIndex, message: label + ': 모두 고정인데 합(' + won(pinnedSum) + '원)이 총금액과 달라요' });
-      return null;
-    }
-    const split = distribute(free, rest);
-    const cell = (m, share) => [m, { ...share, sent: m in round.sent }];
-    return new Map([
-      ...pinned.map((m) => cell(m, { amount: round.fixed[m], extra: false })),
-      ...free.map((m, i) => cell(m, split[i])),
-    ]);
+  const shares = state.rounds.map((_, roundIndex) => {
+    const { missing, error, byName } = roundShares(state, roundIndex);
+    for (const message of error ? [...missing, error] : missing) errors.push({ roundIndex, message });
+    return byName;
   });
   if (errors.length) return { errors, rows: null, roundTotals: null, grandTotal: null, showPaid: false };
 
   const rows = state.members.map((name) => {
-    const cells = shares.map((s) => s.get(name) ?? null);
+    const cells = shares.map((byName, r) => {
+      const share = byName.get(name);
+      return share ? { ...share, sent: name in state.rounds[r].sent } : null;
+    });
     const total = cells.reduce((sum, c) => sum + (c ? c.amount : 0), 0);
     const paid = cells.reduce((sum, c) => sum + (c && c.sent ? c.amount : 0), 0);
     return { name, cells, total, paid, remaining: total - paid };
@@ -791,7 +838,8 @@ roundsEl.addEventListener('click', (e) => {
 
 roundsEl.addEventListener('input', (e) => {
   const input = e.target;
-  const round = state.rounds[roundOf(input)];
+  const roundIndex = roundOf(input);
+  const round = state.rounds[roundIndex];
   if (input.classList.contains('name')) {
     round.name = input.value;
     render({ inputs: false });
@@ -799,15 +847,21 @@ roundsEl.addEventListener('input', (e) => {
   }
   const member = input.dataset.member;
   if (input.type === 'checkbox') {
-    if (input.checked) round.sent[member] = true;
-    else delete round.sent[member];
+    const { field } = input.dataset;
+    if (!input.checked) delete round[field][member];
+    else if (field === 'sent') round.sent[member] = true;
+    else round.fixed[member] = roundShares(state, roundIndex).byName?.get(member)?.amount ?? 0;
     render({ inputs: false });
+    if (input.checked && field === 'fixed') {
+      const amountInput = input.closest('.attendee').querySelector('input[type="text"]');
+      amountInput.focus();
+      amountInput.select();
+    }
     return;
   }
   const amount = amountOf(input);
   if (member === undefined) round.total = amount;
-  else if (amount === null) delete round.fixed[member];
-  else round.fixed[member] = amount;
+  else round.fixed[member] = amount ?? 0;
   render({ inputs: false });
 });
 
