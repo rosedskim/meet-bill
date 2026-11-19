@@ -121,6 +121,25 @@ section + section { margin-top: 16px; }
 }
 .pick[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 .pick[aria-pressed="true"]::before { content: "\2713\00a0"; }
+.summary { width: 100%; margin-top: 12px; }
+.result { border: 2px solid var(--accent); padding: 8px; }
+.result h2 { padding: 0 4px; }
+@media (max-width: 480px) { .result { margin-inline: -8px; padding: 4px; } }
+.errors { margin: 0; padding-left: 20px; color: var(--danger); }
+.table-wrap { overflow-x: auto; }
+table {
+  width: max-content;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+th, td { padding: 0.3em 0.2em; border: 1px solid var(--border); text-align: right; white-space: nowrap; }
+thead th { text-align: center; vertical-align: bottom; background: var(--bg); }
+th[scope="row"] { text-align: left; padding-left: 0.4em; }
+tfoot th { font-weight: 600; }
+tfoot th, tfoot td, td:last-child { background: var(--bg); }
+th span { display: block; }
+.round-name { max-width: 5.5em; margin-inline: auto; font-weight: 400; color: var(--muted); white-space: normal; overflow-wrap: anywhere; }
+.extra { display: block; font-size: 0.75em; color: var(--accent); line-height: 1.1; }
 </style>
 </head>
 <body>
@@ -141,12 +160,18 @@ section + section { margin-top: 16px; }
       <button id="add-round" type="button" class="solid">차수 추가</button>
     </div>
     <div id="rounds" class="rounds"></div>
+    <button id="summarize" type="button" class="solid summary">요약</button>
+  </section>
+  <section id="result" class="result" hidden>
+    <h2>결과</h2>
+    <div id="result-body"></div>
   </section>
 </main>
 <script>
 const state = { members: [], rounds: [] };
 let memberNotice = '';
 let nextRoundId = 1;
+let summaryShown = false;
 
 const form = document.getElementById('member-form');
 const nameInput = document.getElementById('member-name');
@@ -154,6 +179,9 @@ const noticeEl = document.getElementById('member-notice');
 const membersEl = document.getElementById('members');
 const roundsEl = document.getElementById('rounds');
 const addRoundBtn = document.getElementById('add-round');
+const summarizeBtn = document.getElementById('summarize');
+const resultEl = document.getElementById('result');
+const resultBodyEl = document.getElementById('result-body');
 
 // 인원 입력칸은 HTML에 고정해 두고 render가 건드리지 않는다. 다시 그리면 타이핑 중 포커스가 사라진다.
 function renderMembers() {
@@ -270,9 +298,141 @@ function renderRounds() {
   if (range && next.setSelectionRange) next.setSelectionRange(...range);
 }
 
-function render() {
+const won = (n) => n.toLocaleString('ko-KR');
+
+function resultHead(round, i) {
+  const th = document.createElement('th');
+  th.scope = 'col';
+  const n = document.createElement('span');
+  n.textContent = ordinal(i);
+  th.append(n);
+  const name = round.name.trim();
+  if (name) {
+    const nm = document.createElement('span');
+    nm.className = 'round-name';
+    nm.textContent = name;
+    th.append(nm);
+  }
+  return th;
+}
+
+function resultCell(cell) {
+  const td = document.createElement('td');
+  if (!cell) {
+    td.textContent = '-';
+    return td;
+  }
+  td.textContent = won(cell.amount);
+  if (cell.extra) {
+    const mark = document.createElement('span');
+    mark.className = 'extra';
+    mark.textContent = '+1';
+    td.append(mark);
+  }
+  return td;
+}
+
+// 표는 nowrap이라 숫자가 쪼개지지 않는 대신 자연 폭이 컨테이너보다 클 수 있다. 글자 크기를 줄여 맞추고, 하한에 걸리면 표 컨테이너만 가로 스크롤한다.
+// 테두리는 글자 크기와 무관한 1px이고 글자 폭도 소수점 단위로 반올림되어 한 번에 맞지 않으므로, 맞을 때까지 몇 번 더 보정한다.
+const TABLE_FONT_MAX = 14;
+const TABLE_FONT_MIN = 8;
+
+function fitTable() {
+  const wrap = resultBodyEl.querySelector('.table-wrap');
+  if (!wrap || !wrap.clientWidth) return;
+  const table = wrap.firstChild;
+  let size = TABLE_FONT_MAX;
+  for (let i = 0; i < 4; i++) {
+    wrap.style.fontSize = size + 'px';
+    const width = table.getBoundingClientRect().width;
+    if (width <= wrap.clientWidth || size === TABLE_FONT_MIN) return;
+    size = Math.max(TABLE_FONT_MIN, (size * (wrap.clientWidth - 0.5)) / width);
+  }
+}
+
+function resultTable(result) {
+  const table = document.createElement('table');
+
+  const headRow = document.createElement('tr');
+  const corner = document.createElement('th');
+  corner.textContent = '이름';
+  const sum = document.createElement('th');
+  sum.scope = 'col';
+  sum.textContent = '합계';
+  headRow.append(corner, ...state.rounds.map(resultHead), sum);
+  const thead = document.createElement('thead');
+  thead.append(headRow);
+
+  const tbody = document.createElement('tbody');
+  for (const row of result.rows) {
+    const tr = document.createElement('tr');
+    const who = document.createElement('th');
+    who.scope = 'row';
+    who.textContent = row.name;
+    const total = document.createElement('td');
+    total.textContent = won(row.total);
+    tr.append(who, ...row.cells.map(resultCell), total);
+    tbody.append(tr);
+  }
+
+  const footRow = document.createElement('tr');
+  const label = document.createElement('th');
+  label.scope = 'row';
+  label.textContent = '합계';
+  const cells = [...result.roundTotals, result.grandTotal].map((n) => {
+    const td = document.createElement('td');
+    td.textContent = won(n);
+    return td;
+  });
+  footRow.append(label, ...cells);
+  const tfoot = document.createElement('tfoot');
+  tfoot.append(footRow);
+
+  table.append(thead, tbody, tfoot);
+  return table;
+}
+
+function resultErrors(errors) {
+  const intro = document.createElement('p');
+  intro.textContent = '아래를 고치면 표가 나와요.';
+  const list = document.createElement('ul');
+  list.className = 'errors';
+  list.append(...errors.map(({ message }) => {
+    const li = document.createElement('li');
+    li.textContent = message;
+    return li;
+  }));
+  return [intro, list];
+}
+
+function renderResult() {
+  resultEl.hidden = !summaryShown;
+  if (!summaryShown) return;
+
+  if (!state.members.length || !state.rounds.length) {
+    const empty = document.createElement('p');
+    empty.className = 'empty';
+    empty.textContent = state.members.length ? '차수를 추가하세요' : '인원을 먼저 등록하세요';
+    resultBodyEl.replaceChildren(empty);
+    return;
+  }
+  const result = calc(state);
+  if (result.errors.length) {
+    resultBodyEl.replaceChildren(...resultErrors(result.errors));
+    return;
+  }
+  const wrap = document.createElement('div');
+  wrap.className = 'table-wrap';
+  wrap.append(resultTable(result));
+  resultBodyEl.replaceChildren(wrap);
+  fitTable();
+}
+
+// 모든 상태 변경은 render를 거친다. 이름·총금액 input은 입력칸을 다시 그리면 포커스를 잃으므로 rounds: false로 결과만 갱신한다.
+function render({ rounds = true } = {}) {
   renderMembers();
-  renderRounds();
+  if (rounds) renderRounds();
+  renderResult();
 }
 
 function addMember(raw) {
@@ -290,6 +450,36 @@ function addMember(raw) {
 function roundLabel(round, i) {
   const name = round.name.trim();
   return name ? ordinal(i) + ' ' + name : ordinal(i);
+}
+
+// 남는 1원은 받을 사람 중 뒤에서부터 1원씩 더 낸다. 고정 금액자를 뺀 나머지에도 같은 규칙을 쓰려고 사람 목록과 금액만 받는다.
+function distribute(people, amount) {
+  const base = Math.floor(amount / people.length);
+  const firstExtra = people.length - (amount - base * people.length);
+  return people.map((_, i) => ({ amount: base + (i >= firstExtra ? 1 : 0), extra: i >= firstExtra }));
+}
+
+function calc(state) {
+  const errors = [];
+  const shares = state.rounds.map((round, roundIndex) => {
+    const label = roundLabel(round, roundIndex);
+    const attendees = state.members.filter((m) => round.participants.includes(m));
+    const valid = round.total !== null && round.total > 0;
+    if (round.total === null) errors.push({ roundIndex, message: label + ': 총금액을 입력하세요' });
+    else if (!valid) errors.push({ roundIndex, message: label + ': 총금액은 0보다 커야 해요' });
+    if (!attendees.length) errors.push({ roundIndex, message: label + ': 참석자를 선택하세요' });
+    if (!valid || !attendees.length) return null;
+    const dist = distribute(attendees, round.total);
+    return new Map(attendees.map((name, i) => [name, dist[i]]));
+  });
+  if (errors.length) return { errors, rows: null, roundTotals: null, grandTotal: null };
+
+  const rows = state.members.map((name) => {
+    const cells = shares.map((s) => s.get(name) ?? null);
+    return { name, cells, total: cells.reduce((sum, c) => sum + (c ? c.amount : 0), 0) };
+  });
+  const roundTotals = shares.map((_, r) => rows.reduce((sum, row) => sum + (row.cells[r] ? row.cells[r].amount : 0), 0));
+  return { errors, rows, roundTotals, grandTotal: roundTotals.reduce((a, b) => a + b, 0) };
 }
 
 // participants는 항상 members 순서로 다시 만든다. 순서를 보존하고 중복이 생길 수 없다.
@@ -339,7 +529,13 @@ membersEl.addEventListener('click', (e) => {
 
 addRoundBtn.addEventListener('click', () => {
   state.rounds.push({ id: nextRoundId++, name: '', total: null, participants: [], fixed: {} });
-  renderRounds();
+  render();
+});
+
+summarizeBtn.addEventListener('click', () => {
+  summaryShown = true;
+  render({ rounds: false });
+  resultEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
 });
 
 function roundOf(el) {
@@ -360,7 +556,7 @@ roundsEl.addEventListener('click', (e) => {
     case 'none': setParticipants(round, new Set()); break;
     case 'toggle': toggleParticipant(round, btn.dataset.member); break;
   }
-  renderRounds();
+  render();
 });
 
 roundsEl.addEventListener('input', (e) => {
@@ -368,13 +564,17 @@ roundsEl.addEventListener('input', (e) => {
   const round = state.rounds[roundOf(input)];
   if (input.classList.contains('name')) {
     round.name = input.value;
+    render({ rounds: false });
     return;
   }
   // Number가 정확히 다루는 범위 안에 두려고 12자리로 자른다.
   const digits = input.value.replace(/\D/g, '').slice(0, 12);
   if (digits !== input.value) input.value = digits;
   round.total = digits ? Number(digits) : null;
+  render({ rounds: false });
 });
+
+window.addEventListener('resize', fitTable);
 
 render();
 </script>
