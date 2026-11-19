@@ -6,28 +6,50 @@
 <title>모임 정산</title>
 <style>
 :root {
-  --bg: #f6f7f9;
+  --bg: #f2f4f6;
   --surface: #ffffff;
-  --text: #1c1e21;
-  --muted: #5f6670;
-  --border: #d5d9df;
-  --input-border: #8a919b;
-  --accent: #2f6fed;
+  --surface-2: #f7f8fa;
+  --readonly: #eceff3;
+  --text: #191f28;
+  --muted: #6b7684;
+  --border: #e5e8eb;
+  --input-border: #b0b8c1;
+  --accent: #3182f6;
+  --accent-fg: #1b64da;
   --accent-text: #ffffff;
-  --danger: #c62828;
+  --accent-soft: #e8f3ff;
+  --danger: #d93636;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.05);
+  --paper: #fbf8f1;
+  --paper-text: #2b2620;
+  --paper-muted: #8a8070;
+  --paper-rule: #c9bfa9;
+  --stamp: #d64545;
+  --paper-shadow: 0 1px 2px rgba(60, 40, 10, 0.14), 0 8px 24px rgba(60, 40, 10, 0.14);
   color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #14161a;
-    --surface: #1f2329;
-    --text: #e8eaed;
-    --muted: #9aa1ab;
-    --border: #363c45;
-    --input-border: #6b737f;
-    --accent: #6c9bff;
-    --accent-text: #101318;
+    --bg: #101214;
+    --surface: #1b1e23;
+    --surface-2: #252a31;
+    --readonly: #2d333b;
+    --text: #f2f4f6;
+    --muted: #9ba3ae;
+    --border: #2f353d;
+    --input-border: #5b6470;
+    --accent: #3182f6;
+    --accent-fg: #6aaaff;
+    --accent-text: #ffffff;
+    --accent-soft: #1b2e4d;
     --danger: #ff8a80;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.3);
+    --paper: #2a2620;
+    --paper-text: #efe6d4;
+    --paper-muted: #a79c86;
+    --paper-rule: #5a5142;
+    --stamp: #ff7a70;
+    --paper-shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 8px 24px rgba(0, 0, 0, 0.45);
   }
 }
 * { box-sizing: border-box; }
@@ -37,87 +59,100 @@ body {
   color: var(--text);
   font: 16px/1.5 system-ui, -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
 }
-main { max-width: 640px; margin: 0 auto; padding: 16px; }
-h1 { font-size: 1.4rem; margin: 0; }
-.top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 16px; }
-h2 { font-size: 1rem; margin: 0 0 12px; }
+main { max-width: 640px; margin: 0 auto; padding: 20px 16px 56px; }
+h1 { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em; margin: 0; }
+.top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 20px; }
+h2 { font-size: 1.0625rem; font-weight: 700; margin: 0 0 14px; }
 section {
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 16px;
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  padding: 20px;
 }
 form { display: flex; gap: 8px; }
-input {
+input:not([type="checkbox"]) {
   flex: 1;
   min-width: 0;
+  min-height: 48px;
   font: inherit;
   color: inherit;
   background: var(--surface);
   border: 1px solid var(--input-border);
-  border-radius: 8px;
-  padding: 8px 12px;
+  border-radius: 12px;
+  padding: 0 14px;
 }
-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
-input:disabled { background: var(--bg); color: var(--muted); border-color: var(--border); cursor: not-allowed; }
+input::placeholder { color: var(--muted); opacity: 0.8; }
+input:focus-visible, button:focus-visible { outline: 3px solid var(--accent-soft); outline-offset: 0; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+button:focus-visible { box-shadow: 0 0 0 3px var(--accent); outline: none; }
+/* 자동 금액은 고정 칸이 꺼져 있는 동안 읽기 전용 값으로 보인다. 입력칸처럼 보이는 테두리를 없앤다. */
+input:disabled { background: var(--readonly); border-color: transparent; cursor: default; }
 button {
   font: inherit;
   cursor: pointer;
   border: 0;
-  border-radius: 8px;
+  border-radius: 12px;
 }
+button:active { transform: scale(0.97); }
 form button {
+  min-height: 48px;
   background: var(--accent);
   color: var(--accent-text);
-  padding: 8px 16px;
+  font-weight: 600;
+  padding: 0 20px;
 }
 .notice { min-height: 1.5em; margin: 8px 0 0; color: var(--danger); font-size: 0.875rem; }
 .tags, .picks { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 0; padding: 0; list-style: none; }
 .tags li {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   max-width: 100%;
-  padding: 4px 4px 4px 12px;
+  min-height: 44px;
+  padding: 0 4px 0 16px;
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 999px;
+  font-weight: 500;
   overflow-wrap: anywhere;
 }
 .tags button {
   flex: none;
-  width: 28px;
-  height: 28px;
+  width: 36px;
+  height: 44px;
   background: transparent;
   color: var(--muted);
+  font-size: 1.125rem;
   line-height: 1;
 }
 .empty { color: var(--muted); font-size: 0.875rem; }
 section + section { margin-top: 16px; }
 #title { width: 100%; }
-.section-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 12px; }
+.section-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 14px; }
 .section-head h2 { margin: 0; }
-.solid { background: var(--accent); color: var(--accent-text); padding: 8px 16px; }
+.solid { min-height: 48px; background: var(--accent); color: var(--accent-text); font-weight: 600; padding: 0 20px; }
 .outline {
-  min-width: 36px;
-  min-height: 36px;
-  padding: 4px 12px;
-  background: transparent;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 14px;
+  background: var(--surface);
   color: inherit;
   border: 1px solid var(--border);
 }
+.card .outline { background: var(--surface); }
 .outline[aria-disabled="true"] { opacity: 0.4; cursor: default; }
-.rounds { display: flex; flex-direction: column; gap: 12px; }
-.card { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 12px; }
-.card-head { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; }
-.card-head h3 { flex: 1; margin: 0; font-size: 1rem; }
+.rounds { display: flex; flex-direction: column; gap: 14px; }
+.card { background: var(--surface-2); border-radius: 14px; padding: 14px; }
+.card-head { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; }
+.card-head h3 { flex: 1; margin: 0; font-size: 1.0625rem; font-weight: 700; }
 .fields { display: flex; flex-wrap: wrap; gap: 8px; }
 .fields input { flex: 2 1 140px; }
 .fields .total { flex: 1 1 120px; }
-.pick-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 12px 0 0; }
-.pick-head .outline { padding: 4px 8px; }
+.pick-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 14px 0 0; }
+.pick-head .outline { padding: 0 12px; font-size: 0.875rem; }
 .pick-head span { flex: 1; white-space: nowrap; color: var(--muted); font-size: 0.875rem; }
 .pick {
-  padding: 6px 12px;
+  min-height: 44px;
+  padding: 0 16px;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--surface);
@@ -125,44 +160,93 @@ section + section { margin-top: 16px; }
   text-align: left;
   overflow-wrap: anywhere;
 }
-.pick[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.pick[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
 .pick[aria-pressed="true"]::before { content: "\2713\00a0"; }
-.attendee { display: flex; align-items: center; gap: 4px; margin: 8px 0 0; }
-.who { flex: 0 1 5em; min-width: 2.5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.amount { position: relative; flex: 1 1 0; min-width: 5em; }
-.amount input { width: 100%; padding: 8px 4px; text-align: right; font-variant-numeric: tabular-nums; }
+.attendee { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; margin: 10px 0 0; }
+.who { flex: 0 1 4.5em; min-width: 3em; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.amount { position: relative; flex: 1 1 8em; min-width: 8em; }
+.amount input { width: 100%; padding: 0 48px 0 10px; text-align: right; font-variant-numeric: tabular-nums; }
 /* Safari는 disabled 입력의 글자를 따로 흐리게 칠해서 -webkit-text-fill-color로 막는다. 자동 금액은 읽혀야 하는 값이다. */
 .amount input:disabled { color: var(--text); -webkit-text-fill-color: var(--text); opacity: 1; }
-.plus-one { position: absolute; left: 3px; top: 50%; transform: translateY(-50%); font-size: 0.625rem; color: var(--accent); pointer-events: none; }
-.check { display: flex; flex: none; align-items: center; gap: 2px; min-height: 36px; padding: 0 2px; font-size: 0.875rem; cursor: pointer; }
-.check input { flex: none; width: 20px; height: 20px; margin: 0; }
-.settle { margin-top: 32px; }
-.settle p { margin: 0 0 12px; color: var(--muted); font-size: 0.875rem; }
-.settle button { width: 100%; padding: 12px 16px; font-weight: 600; }
-.result { border: 2px solid var(--accent); padding: 8px; }
-.result h2 { padding: 0 4px; overflow-wrap: anywhere; }
-.csv-row { margin: 8px 0 0; padding: 0 4px; }
-/* 열 10개짜리 표가 폰 폭에서 글자 하한에 걸리지 않도록 결과 카드만 화면 끝까지 넓힌다. */
+.plus-one {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-fg);
+  font-size: 0.75rem;
+  font-weight: 700;
+  pointer-events: none;
+}
+.plus-one:empty { display: none; }
+.checks { display: flex; margin-left: auto; }
+.check { display: flex; flex: none; align-items: center; gap: 6px; min-height: 44px; padding: 0 8px; font-size: 0.9375rem; cursor: pointer; }
+.check input { flex: none; width: 22px; height: 22px; margin: 0; accent-color: var(--accent); }
+.settle { margin-top: 32px; padding: 0; background: none; box-shadow: none; }
+.settle p { margin: 0 0 10px; color: var(--muted); font-size: 0.875rem; text-align: center; }
+.settle button { width: 100%; min-height: 56px; font-size: 1.125rem; font-weight: 700; box-shadow: 0 6px 16px rgba(49, 130, 246, 0.3); }
+.result { margin-top: 32px; padding: 0; background: none; box-shadow: none; border-radius: 0; }
+.paper {
+  padding: 28px 20px 20px;
+  background: var(--paper);
+  color: var(--paper-text);
+  border-radius: 6px;
+  box-shadow: var(--paper-shadow);
+}
+.paper-label { margin: 0 0 4px; color: var(--paper-muted); font-size: 0.8125rem; font-weight: 600; letter-spacing: 0.5em; text-align: center; text-indent: 0.5em; }
+.paper h2 {
+  margin: 0 0 16px;
+  padding: 0 4px 18px;
+  border-bottom: 1px dashed var(--paper-rule);
+  font-size: 1.625rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.csv-row { margin: 12px 0 0; }
+.csv-row:empty { display: none; }
+.csv-row .outline { width: 100%; }
+/* 열 10개짜리 표가 폰 폭에서 글자 하한에 걸리지 않도록 정산서만 화면 끝까지 넓힌다. */
 @media (max-width: 480px) {
-  .result { margin-inline: -16px; padding: 4px 0; border-inline-width: 0; border-radius: 0; }
-  .result h2, .csv-row { padding-inline: 16px; }
+  section { padding: 16px; }
+  .card { padding: 12px; }
+  .paper { margin-inline: -16px; padding: 24px 4px 12px; border-radius: 0; }
+  .csv-row { padding-inline: 0; }
 }
 .errors { margin: 0; padding-left: 20px; color: var(--danger); }
 .table-wrap { overflow-x: auto; }
 table {
-  width: max-content;
+  width: 100%;
   border-collapse: collapse;
   font-variant-numeric: tabular-nums;
 }
-th, td { padding: 0.3em 0.15em; border: 1px solid var(--border); text-align: right; white-space: nowrap; }
-thead th { text-align: center; vertical-align: bottom; background: var(--bg); }
-th[scope="row"] { text-align: left; padding-left: 0.3em; }
-tfoot th { font-weight: 600; }
-tfoot th, tfoot td, td.total { background: var(--bg); }
-td.sent { color: var(--muted); }
+th, td { padding: var(--py, 0.4em) var(--px, 0.3em); text-align: right; white-space: nowrap; }
+tbody th, tbody td { border-bottom: 1px dashed var(--paper-rule); }
+thead th { vertical-align: bottom; border-bottom: 1px solid var(--paper-text); color: var(--paper-muted); font-weight: 600; }
+th[scope="row"], thead th:first-child { text-align: left; }
+th[scope="row"] { font-weight: 600; }
+tbody tr:last-child th, tbody tr:last-child td { border-bottom: 0; }
+tfoot th, tfoot td { padding-top: calc(var(--py, 0.4em) + 0.1em); border-top: 3px double var(--paper-text); font-weight: 800; }
+td.total { font-weight: 700; }
+td.sent { color: var(--paper-muted); }
+td.done { text-align: right; }
+.stamp {
+  display: inline-block;
+  padding: 0 0.3em;
+  border: 0.12em solid var(--stamp);
+  border-radius: 0.25em;
+  color: var(--stamp);
+  font-weight: 800;
+  line-height: 1.2;
+  transform: rotate(-6deg);
+}
 th span { display: block; }
-.round-name { max-width: 5.5em; margin-inline: auto; font-weight: 400; color: var(--muted); white-space: normal; overflow-wrap: anywhere; }
-.extra { display: block; font-size: 0.75em; color: var(--accent); line-height: 1.1; }
+.round-name { max-width: 5.5em; margin-left: auto; font-weight: 400; color: var(--paper-muted); white-space: normal; overflow-wrap: anywhere; }
+.extra { display: block; font-size: 0.7em; font-weight: 700; color: var(--accent-fg); line-height: 1.1; }
 </style>
 </head>
 <body>
@@ -192,13 +276,16 @@ th span { display: block; }
     <div id="rounds" class="rounds"></div>
   </section>
   <section class="settle">
-    <h2>결산</h2>
     <p>차수를 모두 입력했으면 눌러 보세요</p>
     <button id="settle" type="button" class="solid">결산</button>
   </section>
   <section id="result" class="result" hidden>
-    <h2 id="result-title"></h2>
-    <div id="result-body"></div>
+    <div class="paper">
+      <p class="paper-label">정산서</p>
+      <h2 id="result-title"></h2>
+      <div id="result-body"></div>
+    </div>
+    <div id="csv-row" class="csv-row"></div>
   </section>
 </main>
 <script>
@@ -216,6 +303,7 @@ const addRoundBtn = document.getElementById('add-round');
 const settleBtn = document.getElementById('settle');
 const resultEl = document.getElementById('result');
 const resultBodyEl = document.getElementById('result-body');
+const csvRowEl = document.getElementById('csv-row');
 const resultTitleEl = document.getElementById('result-title');
 const resetBtn = document.getElementById('reset');
 const titleInput = document.getElementById('title');
@@ -419,7 +507,10 @@ function roundCard(round, i) {
       label.append(box, text);
       return label;
     };
-    row.append(who, amount, check('fixed', '고정'), check('sent', '보냄'));
+    const checks = document.createElement('div');
+    checks.className = 'checks';
+    checks.append(check('fixed', '고정'), check('sent', '보냄'));
+    row.append(who, amount, checks);
     return row;
   });
 
@@ -507,17 +598,26 @@ function resultCell(cell) {
   return td;
 }
 
-// 표는 nowrap이라 숫자가 쪼개지지 않는 대신 자연 폭이 컨테이너보다 클 수 있다. 글자 크기를 줄여 맞추고, 하한에 걸리면 표 컨테이너만 가로 스크롤한다.
-// 테두리는 글자 크기와 무관한 1px이고 글자 폭도 소수점 단위로 반올림되어 한 번에 맞지 않으므로, 맞을 때까지 몇 번 더 보정한다.
-const TABLE_FONT_MAX = 14;
+// 표는 nowrap이라 숫자가 쪼개지지 않는 대신 자연 폭이 컨테이너보다 클 수 있다. 열이 적을수록 큰 글자와 넉넉한 칸 여백에서 시작하고, 넘칠 때만 글자 크기를 줄여 맞춘다. 하한에 걸리면 표 컨테이너만 가로 스크롤한다.
+// 글자 폭이 소수점 단위로 반올림되어 한 번에 맞지 않으므로, 맞을 때까지 몇 번 더 보정한다.
 const TABLE_FONT_MIN = 7;
+const TABLE_SIZES = [
+  { maxCols: 3, font: 20, py: 0.9, px: 0.6 },
+  { maxCols: 5, font: 18, py: 0.7, px: 0.5 },
+  { maxCols: 7, font: 16, py: 0.55, px: 0.4 },
+  { maxCols: Infinity, font: 14, py: 0.4, px: 0.2 },
+];
 
 function fitTable() {
   const wrap = resultBodyEl.querySelector('.table-wrap');
   if (!wrap || !wrap.clientWidth) return;
   const table = wrap.firstChild;
-  let size = TABLE_FONT_MAX;
-  for (let i = 0; i < 4; i++) {
+  const cols = table.rows[0].cells.length;
+  const base = TABLE_SIZES.find((s) => cols <= s.maxCols);
+  wrap.style.setProperty('--py', base.py + 'em');
+  wrap.style.setProperty('--px', base.px + 'em');
+  let size = base.font;
+  for (let i = 0; i < 5; i++) {
     wrap.style.fontSize = size + 'px';
     const width = table.getBoundingClientRect().width;
     if (width <= wrap.clientWidth || size === TABLE_FONT_MIN) return;
@@ -561,7 +661,15 @@ function resultTable(result) {
       const paid = document.createElement('td');
       paid.textContent = row.paid ? won(row.paid) : '-';
       const remaining = document.createElement('td');
-      remaining.textContent = remainingText(row.remaining);
+      if (row.remaining === 0) {
+        remaining.className = 'done';
+        const stamp = document.createElement('span');
+        stamp.className = 'stamp';
+        stamp.textContent = remainingText(0);
+        remaining.append(stamp);
+      } else {
+        remaining.textContent = remainingText(row.remaining);
+      }
       tr.append(paid, remaining);
     }
     tbody.append(tr);
@@ -645,27 +753,25 @@ function renderResult() {
     empty.className = 'empty';
     empty.textContent = state.members.length ? '차수를 추가하세요' : '인원을 먼저 등록하세요';
     resultBodyEl.replaceChildren(empty);
+    csvRowEl.replaceChildren();
     return;
   }
   const result = calc(state);
   if (result.errors.length) {
     resultBodyEl.replaceChildren(...resultErrors(result.errors));
+    csvRowEl.replaceChildren();
     return;
   }
   const wrap = document.createElement('div');
   wrap.className = 'table-wrap';
   wrap.append(resultTable(result));
-  const parts = [wrap];
   const csv = document.createElement('button');
   csv.type = 'button';
   csv.className = 'outline';
   csv.textContent = 'CSV로 저장';
   csv.addEventListener('click', () => downloadCsv(result));
-  const csvRow = document.createElement('div');
-  csvRow.className = 'csv-row';
-  csvRow.append(csv);
-  parts.push(csvRow);
-  resultBodyEl.replaceChildren(...parts);
+  resultBodyEl.replaceChildren(wrap);
+  csvRowEl.replaceChildren(csv);
   fitTable();
 }
 
@@ -887,7 +993,13 @@ resetBtn.addEventListener('click', () => {
   render();
 });
 
-window.addEventListener('resize', fitTable);
+// 창 크기뿐 아니라 컨테이너 폭이 바뀔 때(결과 카드가 처음 나타날 때 포함)도 다시 맞춘다. 높이 변화로는 다시 돌지 않게 폭만 본다.
+let fitWidth = 0;
+new ResizeObserver(([entry]) => {
+  if (entry.contentRect.width === fitWidth) return;
+  fitWidth = entry.contentRect.width;
+  fitTable();
+}).observe(resultBodyEl);
 
 Object.assign(state, load());
 nextRoundId = Math.max(0, ...state.rounds.map((r) => r.id)) + 1;
