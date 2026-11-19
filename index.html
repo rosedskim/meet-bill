@@ -127,11 +127,11 @@ section + section { margin-top: 16px; }
 }
 .pick[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 .pick[aria-pressed="true"]::before { content: "\2713\00a0"; }
-.fixed-row, .paid-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 8px 0 0; }
-.fixed-row span, .paid-row span { flex: 1 1 4em; min-width: 0; overflow-wrap: anywhere; }
-.fixed-row input { flex: 2 1 140px; }
-.paid-row input { flex: 2 1 140px; }
-#paid h3 { margin: 16px 0 0; font-size: 1rem; }
+.fixed-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 8px 0 0; }
+.fixed-row span { flex: 1 1 4em; min-width: 0; overflow-wrap: anywhere; }
+.fixed-row > input { flex: 2 1 140px; }
+.sent-check { display: flex; flex: none; align-items: center; gap: 4px; min-height: 36px; padding: 0 4px; cursor: pointer; }
+.sent-check input { flex: none; width: 20px; height: 20px; margin: 0; }
 .summary { width: 100%; margin-top: 12px; }
 .result { border: 2px solid var(--accent); padding: 8px; }
 .result h2 { padding: 0 4px; overflow-wrap: anywhere; }
@@ -153,6 +153,7 @@ thead th { text-align: center; vertical-align: bottom; background: var(--bg); }
 th[scope="row"] { text-align: left; padding-left: 0.3em; }
 tfoot th { font-weight: 600; }
 tfoot th, tfoot td, td.total { background: var(--bg); }
+td.sent { color: var(--muted); }
 th span { display: block; }
 .round-name { max-width: 5.5em; margin-inline: auto; font-weight: 400; color: var(--muted); white-space: normal; overflow-wrap: anywhere; }
 .extra { display: block; font-size: 0.75em; color: var(--accent); line-height: 1.1; }
@@ -176,10 +177,6 @@ th span { display: block; }
     </form>
     <p id="member-notice" class="notice" role="status"></p>
     <ul id="members" class="tags"></ul>
-    <div id="paid" hidden>
-      <h3>이미 보낸 금액</h3>
-      <div id="paid-rows"></div>
-    </div>
   </section>
   <section>
     <div class="section-head">
@@ -195,8 +192,7 @@ th span { display: block; }
   </section>
 </main>
 <script>
-// 이름이 키라서 fixed와 같이 __proto__ 같은 이름도 일반 키로 쓰이도록 프로토타입 없는 객체로 둔다.
-const state = { members: [], rounds: [], paid: Object.create(null), title: '' };
+const state = { members: [], rounds: [], title: '' };
 let memberNotice = '';
 let nextRoundId = 1;
 let summaryShown = false;
@@ -205,8 +201,6 @@ const form = document.getElementById('member-form');
 const nameInput = document.getElementById('member-name');
 const noticeEl = document.getElementById('member-notice');
 const membersEl = document.getElementById('members');
-const paidEl = document.getElementById('paid');
-const paidRowsEl = document.getElementById('paid-rows');
 const roundsEl = document.getElementById('rounds');
 const addRoundBtn = document.getElementById('add-round');
 const summarizeBtn = document.getElementById('summarize');
@@ -226,10 +220,10 @@ const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
 const isAmount = (n) => Number.isInteger(n) && n >= 0 && n <= 999999999999;
 
 // 이름이 키라서 JSON.parse가 만든 일반 객체를 그대로 쓰면 constructor 같은 이름에서 in 검사가 틀린다. 프로토타입 없는 객체에 다시 담는다.
-function amountsFor(source, names) {
+function restoreMap(source, names, isValid) {
   const out = Object.create(null);
   if (isObject(source)) {
-    for (const name of names) if (Object.hasOwn(source, name) && isAmount(source[name])) out[name] = source[name];
+    for (const name of names) if (Object.hasOwn(source, name) && isValid(source[name])) out[name] = source[name];
   }
   return out;
 }
@@ -247,7 +241,8 @@ function restoreRounds(list, members) {
       name: typeof r.name === 'string' ? r.name : '',
       total: isAmount(r.total) ? r.total : null,
       participants,
-      fixed: amountsFor(r.fixed, participants),
+      fixed: restoreMap(r.fixed, participants, isAmount),
+      sent: restoreMap(r.sent, participants, (v) => v === true),
     };
   });
   let next = Math.max(0, ...seen) + 1;
@@ -263,7 +258,6 @@ function parseSaved(text) {
   return {
     members,
     rounds: restoreRounds(Array.isArray(data.rounds) ? data.rounds : [], members),
-    paid: amountsFor(data.paid, members),
     title: typeof data.title === 'string' ? data.title : '',
   };
 }
@@ -277,10 +271,10 @@ function load() {
 }
 
 function save() {
-  const { members, rounds, paid, title } = state;
+  const { members, rounds, title } = state;
   try {
     if (!members.length && !rounds.length && !title) localStorage.removeItem(STORAGE_KEY);
-    else localStorage.setItem(STORAGE_KEY, JSON.stringify({ members, rounds, paid, title }));
+    else localStorage.setItem(STORAGE_KEY, JSON.stringify({ members, rounds, title }));
   } catch {
     // 저장소가 막혔거나 가득 차도 앱은 저장 없이 계속 쓸 수 있어야 한다.
   }
@@ -303,24 +297,6 @@ function renderMembers() {
     return li;
   });
   membersEl.replaceChildren(...tags);
-}
-
-function paidRow(name) {
-  const row = document.createElement('div');
-  row.className = 'paid-row';
-  const who = document.createElement('span');
-  who.textContent = name;
-  const amount = document.createElement('input');
-  amount.type = 'text';
-  amount.inputMode = 'numeric';
-  amount.placeholder = '이미 보낸 금액(선택)';
-  amount.setAttribute('aria-label', name + ' 이미 보낸 금액');
-  amount.autocomplete = 'off';
-  amount.dataset.key = 'paid:' + name;
-  amount.dataset.member = name;
-  amount.value = state.paid[name] ?? '';
-  row.append(who, amount);
-  return row;
 }
 
 function button(cls, text, label, key, action) {
@@ -405,6 +381,15 @@ function roundCard(round, i) {
     row.className = 'fixed-row';
     const who = document.createElement('span');
     who.textContent = m;
+    const sent = document.createElement('label');
+    sent.className = 'sent-check';
+    const check = document.createElement('input');
+    check.type = 'checkbox';
+    check.setAttribute('aria-label', n + ' ' + m + ' 보냄');
+    check.dataset.key = k('sent:' + m);
+    check.dataset.member = m;
+    check.checked = m in round.sent;
+    sent.append(check, '보냄');
     const amount = document.createElement('input');
     amount.type = 'text';
     amount.inputMode = 'numeric';
@@ -414,7 +399,7 @@ function roundCard(round, i) {
     amount.dataset.key = k('fixed:' + m);
     amount.dataset.member = m;
     amount.value = round.fixed[m] ?? '';
-    row.append(who, amount);
+    row.append(who, sent, amount);
     return row;
   });
 
@@ -441,13 +426,8 @@ function renderRounds() {
   redraw(roundsEl, state.rounds.map(roundCard), addRoundBtn);
 }
 
-function renderPaid() {
-  paidEl.hidden = !state.members.length;
-  redraw(paidRowsEl, state.members.map(paidRow), nameInput);
-}
-
 const won = (n) => n.toLocaleString('ko-KR');
-const remainingText = (n) => (n === 0 ? '완료' : n < 0 ? '환급 ' + won(-n) + '원' : won(n));
+const remainingText = (n) => (n === 0 ? '완료' : won(n));
 
 function resultHead(round, i) {
   const th = document.createElement('th');
@@ -471,7 +451,8 @@ function resultCell(cell) {
     td.textContent = '-';
     return td;
   }
-  td.textContent = won(cell.amount);
+  td.textContent = (cell.sent ? '\u2713\u00a0' : '') + won(cell.amount);
+  if (cell.sent) td.className = 'sent';
   if (cell.extra) {
     const mark = document.createElement('span');
     mark.className = 'extra';
@@ -551,7 +532,7 @@ function resultTable(result) {
     return td;
   });
   footRow.append(label, ...cells);
-  // 남은 금액의 합은 환급과 미납이 섞이고, 이미 보낸 금액의 합은 전체 합계 옆에서 정산 합계로 읽혀 둘 다 비운다.
+  // 보낸 금액의 합은 전체 합계 옆에서 정산 합계로 읽혀 두 열 모두 비운다.
   if (result.showPaid) footRow.append(document.createElement('td'), document.createElement('td'));
   const tfoot = document.createElement('tfoot');
   tfoot.append(footRow);
@@ -575,7 +556,7 @@ function resultErrors(errors) {
 
 const resultTitle = () => state.title.trim() || '모임정산표';
 
-const csvRemaining = (n) => (n === 0 ? '완료' : n < 0 ? '환급 ' + -n + '원' : String(n));
+const csvRemaining = (n) => (n === 0 ? '완료' : String(n));
 
 // 스프레드시트가 수식으로 읽지 않도록 =, +, -, @로 시작하는 글자 앞에 '를 붙인다. 미참석 칸의 '-'는 수식이 아니라서 둔다.
 function csvField(value) {
@@ -643,13 +624,10 @@ function renderResult() {
   fitTable();
 }
 
-// 모든 상태 변경은 render를 거친다. 이름·총금액·고정 금액·이미 보낸 금액 input은 입력칸을 다시 그리면 포커스를 잃으므로 inputs: false로 결과만 갱신한다.
+// 모든 상태 변경은 render를 거친다. 이름·총금액·고정 금액·보냄 input은 입력칸을 다시 그리면 포커스를 잃으므로 inputs: false로 결과만 갱신한다.
 function render({ inputs = true } = {}) {
   renderMembers();
-  if (inputs) {
-    renderRounds();
-    renderPaid();
-  }
+  if (inputs) renderRounds();
   renderResult();
   save();
 }
@@ -701,9 +679,10 @@ function calc(state) {
       return null;
     }
     const split = distribute(free, rest);
+    const cell = (m, share) => [m, { ...share, sent: m in round.sent }];
     return new Map([
-      ...pinned.map((m) => [m, { amount: round.fixed[m], extra: false }]),
-      ...free.map((m, i) => [m, split[i]]),
+      ...pinned.map((m) => cell(m, { amount: round.fixed[m], extra: false })),
+      ...free.map((m, i) => cell(m, split[i])),
     ]);
   });
   if (errors.length) return { errors, rows: null, roundTotals: null, grandTotal: null, showPaid: false };
@@ -711,20 +690,22 @@ function calc(state) {
   const rows = state.members.map((name) => {
     const cells = shares.map((s) => s.get(name) ?? null);
     const total = cells.reduce((sum, c) => sum + (c ? c.amount : 0), 0);
-    const paid = state.paid[name] ?? 0;
+    const paid = cells.reduce((sum, c) => sum + (c && c.sent ? c.amount : 0), 0);
     return { name, cells, total, paid, remaining: total - paid };
   });
   const roundTotals = shares.map((_, r) => rows.reduce((sum, row) => sum + (row.cells[r] ? row.cells[r].amount : 0), 0));
-  const showPaid = rows.some((row) => row.paid > 0);
+  const showPaid = rows.some((row) => row.cells.some((c) => c && c.sent));
   return { errors, rows, roundTotals, grandTotal: roundTotals.reduce((a, b) => a + b, 0), showPaid };
 }
 
 // participants는 항상 members 순서로 다시 만든다. 순서를 보존하고 중복이 생길 수 없다.
-// 참석자에서 빠진 사람의 고정 금액도 여기서 지워, 다시 참석해도 예전 금액이 되살아나지 않는다.
+// 참석자에서 빠진 사람의 고정 금액과 보냄도 여기서 지워, 다시 참석해도 예전 값이 되살아나지 않는다.
 function setParticipants(round, picked) {
   round.participants = state.members.filter((m) => picked.has(m));
-  for (const name of Object.keys(round.fixed)) {
-    if (!round.participants.includes(name)) delete round.fixed[name];
+  for (const map of [round.fixed, round.sent]) {
+    for (const name of Object.keys(map)) {
+      if (!round.participants.includes(name)) delete map[name];
+    }
   }
 }
 
@@ -764,14 +745,13 @@ membersEl.addEventListener('click', (e) => {
     if (!confirm(`'${name}'을(를) 삭제하면 아래 차수의 참석자에서도 빠져요.\n${list}\n삭제할까요?`)) return;
   }
   state.members.splice(Number(btn.dataset.index), 1);
-  delete state.paid[name];
   for (const [r] of hit) setParticipants(r, new Set(r.participants.filter((m) => m !== name)));
   render();
 });
 
 addRoundBtn.addEventListener('click', () => {
   // 이름이 키라서 __proto__ 같은 이름도 일반 키로 쓰이도록 프로토타입 없는 객체로 둔다.
-  state.rounds.push({ id: nextRoundId++, name: '', total: null, participants: [], fixed: Object.create(null) });
+  state.rounds.push({ id: nextRoundId++, name: '', total: null, participants: [], fixed: Object.create(null), sent: Object.create(null) });
   render();
 });
 
@@ -787,13 +767,6 @@ function amountOf(input) {
   if (digits !== input.value) input.value = digits;
   return digits ? Number(digits) : null;
 }
-
-paidRowsEl.addEventListener('input', (e) => {
-  const amount = amountOf(e.target);
-  if (amount === null) delete state.paid[e.target.dataset.member];
-  else state.paid[e.target.dataset.member] = amount;
-  render({ inputs: false });
-});
 
 function roundOf(el) {
   const id = Number(el.closest('[data-round-id]').dataset.roundId);
@@ -824,8 +797,14 @@ roundsEl.addEventListener('input', (e) => {
     render({ inputs: false });
     return;
   }
-  const amount = amountOf(input);
   const member = input.dataset.member;
+  if (input.type === 'checkbox') {
+    if (input.checked) round.sent[member] = true;
+    else delete round.sent[member];
+    render({ inputs: false });
+    return;
+  }
+  const amount = amountOf(input);
   if (member === undefined) round.total = amount;
   else if (amount === null) delete round.fixed[member];
   else round.fixed[member] = amount;
@@ -839,7 +818,7 @@ titleInput.addEventListener('input', () => {
 
 resetBtn.addEventListener('click', () => {
   if (!confirm('입력한 내용을 모두 지우고 새로 시작할까요?')) return;
-  Object.assign(state, { members: [], rounds: [], paid: Object.create(null), title: '' });
+  Object.assign(state, { members: [], rounds: [], title: '' });
   memberNotice = '';
   nextRoundId = 1;
   summaryShown = false;
