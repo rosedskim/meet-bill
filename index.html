@@ -136,7 +136,9 @@ section + section { margin-top: 16px; }
 .plus-one { position: absolute; left: 3px; top: 50%; transform: translateY(-50%); font-size: 0.625rem; color: var(--accent); pointer-events: none; }
 .check { display: flex; flex: none; align-items: center; gap: 2px; min-height: 36px; padding: 0 2px; font-size: 0.875rem; cursor: pointer; }
 .check input { flex: none; width: 20px; height: 20px; margin: 0; }
-.summary { width: 100%; margin-top: 12px; }
+.settle { margin-top: 32px; }
+.settle p { margin: 0 0 12px; color: var(--muted); font-size: 0.875rem; }
+.settle button { width: 100%; padding: 12px 16px; font-weight: 600; }
 .result { border: 2px solid var(--accent); padding: 8px; }
 .result h2 { padding: 0 4px; overflow-wrap: anywhere; }
 .csv-row { margin: 8px 0 0; padding: 0 4px; }
@@ -188,7 +190,11 @@ th span { display: block; }
       <button id="add-round" type="button" class="solid">차수 추가</button>
     </div>
     <div id="rounds" class="rounds"></div>
-    <button id="summarize" type="button" class="solid summary">요약</button>
+  </section>
+  <section class="settle">
+    <h2>결산</h2>
+    <p>차수를 모두 입력했으면 눌러 보세요</p>
+    <button id="settle" type="button" class="solid">결산</button>
   </section>
   <section id="result" class="result" hidden>
     <h2 id="result-title"></h2>
@@ -199,7 +205,7 @@ th span { display: block; }
 const state = { members: [], rounds: [], title: '' };
 let memberNotice = '';
 let nextRoundId = 1;
-let summaryShown = false;
+let settleShown = false;
 
 const form = document.getElementById('member-form');
 const nameInput = document.getElementById('member-name');
@@ -207,7 +213,7 @@ const noticeEl = document.getElementById('member-notice');
 const membersEl = document.getElementById('members');
 const roundsEl = document.getElementById('rounds');
 const addRoundBtn = document.getElementById('add-round');
-const summarizeBtn = document.getElementById('summarize');
+const settleBtn = document.getElementById('settle');
 const resultEl = document.getElementById('result');
 const resultBodyEl = document.getElementById('result-body');
 const resultTitleEl = document.getElementById('result-title');
@@ -630,8 +636,8 @@ function downloadCsv(result) {
 }
 
 function renderResult() {
-  resultEl.hidden = !summaryShown;
-  if (!summaryShown) return;
+  resultEl.hidden = !settleShown;
+  if (!settleShown) return;
   resultTitleEl.textContent = resultTitle();
 
   if (!state.members.length || !state.rounds.length) {
@@ -802,8 +808,8 @@ addRoundBtn.addEventListener('click', () => {
   render();
 });
 
-summarizeBtn.addEventListener('click', () => {
-  summaryShown = true;
+settleBtn.addEventListener('click', () => {
+  settleShown = true;
   render({ inputs: false });
   resultEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
 });
@@ -875,7 +881,7 @@ resetBtn.addEventListener('click', () => {
   Object.assign(state, { members: [], rounds: [], title: '' });
   memberNotice = '';
   nextRoundId = 1;
-  summaryShown = false;
+  settleShown = false;
   nameInput.value = '';
   titleInput.value = '';
   render();
