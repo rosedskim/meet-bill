@@ -67,7 +67,7 @@ form button {
   padding: 8px 16px;
 }
 .notice { min-height: 1.5em; margin: 8px 0 0; color: var(--danger); font-size: 0.875rem; }
-.tags { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 0; padding: 0; list-style: none; }
+.tags, .picks { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 0; padding: 0; list-style: none; }
 .tags li {
   display: flex;
   align-items: center;
@@ -87,6 +87,40 @@ form button {
   line-height: 1;
 }
 .empty { color: var(--muted); font-size: 0.875rem; }
+section + section { margin-top: 16px; }
+.section-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 12px; }
+.section-head h2 { margin: 0; }
+.solid { background: var(--accent); color: var(--accent-text); padding: 8px 16px; }
+.outline {
+  min-width: 36px;
+  min-height: 36px;
+  padding: 4px 12px;
+  background: transparent;
+  color: inherit;
+  border: 1px solid var(--border);
+}
+.outline[aria-disabled="true"] { opacity: 0.4; cursor: default; }
+.rounds { display: flex; flex-direction: column; gap: 12px; }
+.card { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 12px; }
+.card-head { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; }
+.card-head h3 { flex: 1; margin: 0; font-size: 1rem; }
+.fields { display: flex; flex-wrap: wrap; gap: 8px; }
+.fields input { flex: 2 1 140px; background: var(--surface); }
+.fields .total { flex: 1 1 120px; }
+.pick-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 12px 0 0; }
+.pick-head .outline { padding: 4px 8px; }
+.pick-head span { flex: 1; white-space: nowrap; color: var(--muted); font-size: 0.875rem; }
+.pick {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: inherit;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.pick[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.pick[aria-pressed="true"]::before { content: "\2713\00a0"; }
 </style>
 </head>
 <body>
@@ -101,18 +135,28 @@ form button {
     <p id="member-notice" class="notice" role="status"></p>
     <ul id="members" class="tags"></ul>
   </section>
+  <section>
+    <div class="section-head">
+      <h2>차수</h2>
+      <button id="add-round" type="button" class="solid">차수 추가</button>
+    </div>
+    <div id="rounds" class="rounds"></div>
+  </section>
 </main>
 <script>
 const state = { members: [], rounds: [] };
 let memberNotice = '';
+let nextRoundId = 1;
 
 const form = document.getElementById('member-form');
 const nameInput = document.getElementById('member-name');
 const noticeEl = document.getElementById('member-notice');
 const membersEl = document.getElementById('members');
+const roundsEl = document.getElementById('rounds');
+const addRoundBtn = document.getElementById('add-round');
 
-// 입력칸은 HTML에 고정해 두고 render가 건드리지 않는다. 다시 그리면 타이핑 중 포커스가 사라진다.
-function render() {
+// 인원 입력칸은 HTML에 고정해 두고 render가 건드리지 않는다. 다시 그리면 타이핑 중 포커스가 사라진다.
+function renderMembers() {
   noticeEl.textContent = memberNotice;
 
   const tags = state.members.map((name, i) => {
@@ -130,6 +174,107 @@ function render() {
   membersEl.replaceChildren(...tags);
 }
 
+function button(cls, text, label, key, action) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = cls;
+  b.textContent = text;
+  b.setAttribute('aria-label', label);
+  b.dataset.key = key;
+  b.dataset.action = action;
+  return b;
+}
+
+const ordinal = (i) => i + 1 + '차';
+
+function roundCard(round, i) {
+  const n = ordinal(i);
+  const k = (what) => round.id + ':' + what;
+
+  const card = document.createElement('article');
+  card.className = 'card';
+  card.dataset.roundId = round.id;
+
+  const head = document.createElement('div');
+  head.className = 'card-head';
+  const title = document.createElement('h3');
+  title.textContent = n;
+  const up = button('outline', '▲', n + ' 위로 이동', k('up'), 'up');
+  const down = button('outline', '▼', n + ' 아래로 이동', k('down'), 'down');
+  up.setAttribute('aria-disabled', i === 0);
+  down.setAttribute('aria-disabled', i === state.rounds.length - 1);
+  head.append(title, up, down, button('outline', '삭제', n + ' 삭제', k('remove'), 'remove'));
+
+  const fields = document.createElement('div');
+  fields.className = 'fields';
+  const name = document.createElement('input');
+  name.type = 'text';
+  name.className = 'name';
+  name.placeholder = '이름 (예: 미미철판)';
+  name.setAttribute('aria-label', n + ' 이름');
+  name.autocomplete = 'off';
+  name.dataset.key = k('name');
+  name.value = round.name;
+  const total = document.createElement('input');
+  total.type = 'text';
+  total.className = 'total';
+  total.inputMode = 'numeric';
+  total.placeholder = '총금액(원)';
+  total.setAttribute('aria-label', n + ' 총금액');
+  total.autocomplete = 'off';
+  total.dataset.key = k('total');
+  total.value = round.total ?? '';
+  fields.append(name, total);
+
+  const pickHead = document.createElement('div');
+  pickHead.className = 'pick-head';
+  const label = document.createElement('span');
+  label.textContent = '참석자 ' + round.participants.length + '/' + state.members.length;
+  pickHead.append(
+    label,
+    button('outline', '전체선택', n + ' 전체선택', k('all'), 'all'),
+    button('outline', '전체해제', n + ' 전체해제', k('none'), 'none'),
+  );
+
+  const picks = document.createElement('div');
+  picks.className = 'picks';
+  if (!state.members.length) {
+    const empty = document.createElement('p');
+    empty.className = 'empty';
+    empty.textContent = '인원을 먼저 등록하세요';
+    picks.append(empty);
+  }
+  for (const m of state.members) {
+    const pick = button('pick', m, m, k('tag:' + m), 'toggle');
+    pick.dataset.member = m;
+    pick.setAttribute('aria-pressed', round.participants.includes(m));
+    picks.append(pick);
+  }
+
+  card.append(head, fields, pickHead, picks);
+  return card;
+}
+
+// 입력칸은 이름·총금액 input 이벤트가 상태만 고치고 다시 그리지 않는다. 구조가 바뀔 때만 여기서 카드를 새로 만들고, 포커스와 선택 범위를 data-key로 되찾는다.
+function renderRounds() {
+  const active = document.activeElement;
+  const hadFocus = roundsEl.contains(active);
+  const key = hadFocus ? active.dataset.key : null;
+  const range = hadFocus && active.selectionStart !== undefined ? [active.selectionStart, active.selectionEnd] : null;
+
+  roundsEl.replaceChildren(...state.rounds.map(roundCard));
+
+  if (!hadFocus) return;
+  const next = [...roundsEl.querySelectorAll('[data-key]')].find((el) => el.dataset.key === key) ?? addRoundBtn;
+  next.focus();
+  if (range && next.setSelectionRange) next.setSelectionRange(...range);
+}
+
+function render() {
+  renderMembers();
+  renderRounds();
+}
+
 function addMember(raw) {
   const name = raw.trim();
   if (!name) return false;
@@ -140,6 +285,28 @@ function addMember(raw) {
   state.members.push(name);
   memberNotice = '';
   return true;
+}
+
+function roundLabel(round, i) {
+  const name = round.name.trim();
+  return name ? ordinal(i) + ' ' + name : ordinal(i);
+}
+
+// participants는 항상 members 순서로 다시 만든다. 순서를 보존하고 중복이 생길 수 없다.
+function setParticipants(round, picked) {
+  round.participants = state.members.filter((m) => picked.has(m));
+}
+
+function toggleParticipant(round, member) {
+  const picked = new Set(round.participants);
+  if (!picked.delete(member)) picked.add(member);
+  setParticipants(round, picked);
+}
+
+function moveRound(i, delta) {
+  const j = i + delta;
+  if (j < 0 || j >= state.rounds.length) return;
+  [state.rounds[i], state.rounds[j]] = [state.rounds[j], state.rounds[i]];
 }
 
 form.addEventListener('submit', (e) => {
@@ -159,8 +326,54 @@ nameInput.addEventListener('input', () => {
 membersEl.addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-index]');
   if (!btn) return;
+  const name = state.members[Number(btn.dataset.index)];
+  const hit = state.rounds.map((r, i) => [r, i]).filter(([r]) => r.participants.includes(name));
+  if (hit.length) {
+    const list = hit.map(([r, i]) => '- ' + roundLabel(r, i)).join('\n');
+    if (!confirm(`'${name}'을(를) 삭제하면 아래 차수의 참석자에서도 빠져요.\n${list}\n삭제할까요?`)) return;
+  }
   state.members.splice(Number(btn.dataset.index), 1);
+  for (const [r] of hit) r.participants = r.participants.filter((m) => m !== name);
   render();
+});
+
+addRoundBtn.addEventListener('click', () => {
+  state.rounds.push({ id: nextRoundId++, name: '', total: null, participants: [], fixed: {} });
+  renderRounds();
+});
+
+function roundOf(el) {
+  const id = Number(el.closest('[data-round-id]').dataset.roundId);
+  return state.rounds.findIndex((r) => r.id === id);
+}
+
+roundsEl.addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-action]');
+  if (!btn) return;
+  const i = roundOf(btn);
+  const round = state.rounds[i];
+  switch (btn.dataset.action) {
+    case 'up': moveRound(i, -1); break;
+    case 'down': moveRound(i, 1); break;
+    case 'remove': state.rounds.splice(i, 1); break;
+    case 'all': setParticipants(round, new Set(state.members)); break;
+    case 'none': setParticipants(round, new Set()); break;
+    case 'toggle': toggleParticipant(round, btn.dataset.member); break;
+  }
+  renderRounds();
+});
+
+roundsEl.addEventListener('input', (e) => {
+  const input = e.target;
+  const round = state.rounds[roundOf(input)];
+  if (input.classList.contains('name')) {
+    round.name = input.value;
+    return;
+  }
+  // Number가 정확히 다루는 범위 안에 두려고 12자리로 자른다.
+  const digits = input.value.replace(/\D/g, '').slice(0, 12);
+  if (digits !== input.value) input.value = digits;
+  round.total = digits ? Number(digits) : null;
 });
 
 render();
