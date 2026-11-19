@@ -126,21 +126,20 @@ section + section { margin-top: 16px; }
 .result h2 { padding: 0 4px; }
 @media (max-width: 480px) { .result { margin-inline: -8px; padding: 4px; } }
 .errors { margin: 0; padding-left: 20px; color: var(--danger); }
+.table-wrap { overflow-x: auto; }
 table {
-  width: 100%;
-  table-layout: fixed;
+  width: max-content;
   border-collapse: collapse;
-  font-size: 0.65rem;
   font-variant-numeric: tabular-nums;
 }
-th, td { padding: 4px 1px; border: 1px solid var(--border); text-align: right; overflow-wrap: anywhere; }
+th, td { padding: 0.3em 0.2em; border: 1px solid var(--border); text-align: right; white-space: nowrap; }
 thead th { text-align: center; vertical-align: bottom; background: var(--bg); }
-th[scope="row"] { text-align: left; padding-left: 4px; }
+th[scope="row"] { text-align: left; padding-left: 0.4em; }
 tfoot th { font-weight: 600; }
 tfoot th, tfoot td, td:last-child { background: var(--bg); }
 th span { display: block; }
-.round-name { font-weight: 400; color: var(--muted); }
-.extra { display: block; font-size: 0.5625rem; color: var(--accent); line-height: 1.1; }
+.round-name { max-width: 5.5em; margin-inline: auto; font-weight: 400; color: var(--muted); white-space: normal; overflow-wrap: anywhere; }
+.extra { display: block; font-size: 0.75em; color: var(--accent); line-height: 1.1; }
 </style>
 </head>
 <body>
@@ -333,23 +332,22 @@ function resultCell(cell) {
   return td;
 }
 
-// 고정 레이아웃은 열 폭이 같아 큰 금액이 줄바꿈된다. 칸 글자 폭에 비례해 나눠 가로 스크롤 없이 숫자가 한 줄에 들어가게 한다.
-// 숫자 하나를 2, 쉼표를 1, 이름 한 글자를 3.2로 센다.
-function fitColumns(table) {
-  const rows = [...table.tBodies[0].rows, ...table.tFoot.rows];
-  const weights = [...table.rows[0].cells].map((_, c) => {
-    const texts = rows.map((row) => row.cells[c].firstChild.textContent);
-    if (c === 0) return Math.min(Math.max(...texts.map((t) => t.length)), 3) * 3.2 + 1;
-    return Math.max(...texts.map((t) => 2 * t.length - (t.match(/,/g) || []).length)) + 1;
-  });
-  const sum = weights.reduce((a, b) => a + b, 0);
-  const group = document.createElement('colgroup');
-  group.append(...weights.map((w) => {
-    const col = document.createElement('col');
-    col.style.width = (w / sum) * 100 + '%';
-    return col;
-  }));
-  table.prepend(group);
+// 표는 nowrap이라 숫자가 쪼개지지 않는 대신 자연 폭이 컨테이너보다 클 수 있다. 글자 크기를 줄여 맞추고, 하한에 걸리면 표 컨테이너만 가로 스크롤한다.
+// 테두리는 글자 크기와 무관한 1px이고 글자 폭도 소수점 단위로 반올림되어 한 번에 맞지 않으므로, 맞을 때까지 몇 번 더 보정한다.
+const TABLE_FONT_MAX = 14;
+const TABLE_FONT_MIN = 8;
+
+function fitTable() {
+  const wrap = resultBodyEl.querySelector('.table-wrap');
+  if (!wrap || !wrap.clientWidth) return;
+  const table = wrap.firstChild;
+  let size = TABLE_FONT_MAX;
+  for (let i = 0; i < 4; i++) {
+    wrap.style.fontSize = size + 'px';
+    const width = table.getBoundingClientRect().width;
+    if (width <= wrap.clientWidth || size === TABLE_FONT_MIN) return;
+    size = Math.max(TABLE_FONT_MIN, (size * (wrap.clientWidth - 0.5)) / width);
+  }
 }
 
 function resultTable(result) {
@@ -391,7 +389,6 @@ function resultTable(result) {
   tfoot.append(footRow);
 
   table.append(thead, tbody, tfoot);
-  fitColumns(table);
   return table;
 }
 
@@ -420,7 +417,15 @@ function renderResult() {
     return;
   }
   const result = calc(state);
-  resultBodyEl.replaceChildren(...(result.errors.length ? resultErrors(result.errors) : [resultTable(result)]));
+  if (result.errors.length) {
+    resultBodyEl.replaceChildren(...resultErrors(result.errors));
+    return;
+  }
+  const wrap = document.createElement('div');
+  wrap.className = 'table-wrap';
+  wrap.append(resultTable(result));
+  resultBodyEl.replaceChildren(wrap);
+  fitTable();
 }
 
 // 모든 상태 변경은 render를 거친다. 이름·총금액 input은 입력칸을 다시 그리면 포커스를 잃으므로 rounds: false로 결과만 갱신한다.
@@ -568,6 +573,8 @@ roundsEl.addEventListener('input', (e) => {
   round.total = digits ? Number(digits) : null;
   render({ rounds: false });
 });
+
+window.addEventListener('resize', fitTable);
 
 render();
 </script>
