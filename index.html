@@ -129,7 +129,11 @@ section + section { margin-top: 16px; }
 .summary { width: 100%; margin-top: 12px; }
 .result { border: 2px solid var(--accent); padding: 8px; }
 .result h2 { padding: 0 4px; }
-@media (max-width: 480px) { .result { margin-inline: -8px; padding: 4px; } }
+/* 열 10개짜리 표가 폰 폭에서 글자 하한에 걸리지 않도록 결과 카드만 화면 끝까지 넓힌다. */
+@media (max-width: 480px) {
+  .result { margin-inline: -16px; padding: 4px 0; border-inline-width: 0; border-radius: 0; }
+  .result h2 { padding-inline: 16px; }
+}
 .errors { margin: 0; padding-left: 20px; color: var(--danger); }
 .table-wrap { overflow-x: auto; }
 table {
@@ -137,14 +141,13 @@ table {
   border-collapse: collapse;
   font-variant-numeric: tabular-nums;
 }
-th, td { padding: 0.3em 0.2em; border: 1px solid var(--border); text-align: right; white-space: nowrap; }
+th, td { padding: 0.3em 0.15em; border: 1px solid var(--border); text-align: right; white-space: nowrap; }
 thead th { text-align: center; vertical-align: bottom; background: var(--bg); }
-th[scope="row"] { text-align: left; padding-left: 0.4em; }
+th[scope="row"] { text-align: left; padding-left: 0.3em; }
 tfoot th { font-weight: 600; }
 tfoot th, tfoot td, td.total { background: var(--bg); }
 th span { display: block; }
 .round-name { max-width: 5.5em; margin-inline: auto; font-weight: 400; color: var(--muted); white-space: normal; overflow-wrap: anywhere; }
-.paid-head { max-width: 4.5em; margin-inline: auto; white-space: normal; }
 .extra { display: block; font-size: 0.75em; color: var(--accent); line-height: 1.1; }
 </style>
 </head>
@@ -394,7 +397,7 @@ function resultCell(cell) {
 // 표는 nowrap이라 숫자가 쪼개지지 않는 대신 자연 폭이 컨테이너보다 클 수 있다. 글자 크기를 줄여 맞추고, 하한에 걸리면 표 컨테이너만 가로 스크롤한다.
 // 테두리는 글자 크기와 무관한 1px이고 글자 폭도 소수점 단위로 반올림되어 한 번에 맞지 않으므로, 맞을 때까지 몇 번 더 보정한다.
 const TABLE_FONT_MAX = 14;
-const TABLE_FONT_MIN = 8;
+const TABLE_FONT_MIN = 7;
 
 function fitTable() {
   const wrap = resultBodyEl.querySelector('.table-wrap');
@@ -422,10 +425,7 @@ function resultTable(result) {
   if (result.showPaid) {
     const paid = document.createElement('th');
     paid.scope = 'col';
-    const paidText = document.createElement('span');
-    paidText.className = 'paid-head';
-    paidText.textContent = '이미 보낸 금액';
-    paid.append(paidText);
+    paid.textContent = '보낸 금액';
     const remaining = document.createElement('th');
     remaining.scope = 'col';
     remaining.textContent = '남은 금액';
