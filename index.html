@@ -598,17 +598,26 @@ function resultCell(cell) {
   return td;
 }
 
-// 표는 nowrap이라 숫자가 쪼개지지 않는 대신 자연 폭이 컨테이너보다 클 수 있다. 글자 크기를 줄여 맞추고, 하한에 걸리면 표 컨테이너만 가로 스크롤한다.
-// 테두리는 글자 크기와 무관한 1px이고 글자 폭도 소수점 단위로 반올림되어 한 번에 맞지 않으므로, 맞을 때까지 몇 번 더 보정한다.
-const TABLE_FONT_MAX = 14;
+// 표는 nowrap이라 숫자가 쪼개지지 않는 대신 자연 폭이 컨테이너보다 클 수 있다. 열이 적을수록 큰 글자와 넉넉한 칸 여백에서 시작하고, 넘칠 때만 글자 크기를 줄여 맞춘다. 하한에 걸리면 표 컨테이너만 가로 스크롤한다.
+// 글자 폭이 소수점 단위로 반올림되어 한 번에 맞지 않으므로, 맞을 때까지 몇 번 더 보정한다.
 const TABLE_FONT_MIN = 7;
+const TABLE_SIZES = [
+  { maxCols: 3, font: 20, py: 0.9, px: 0.6 },
+  { maxCols: 5, font: 18, py: 0.7, px: 0.5 },
+  { maxCols: 7, font: 16, py: 0.55, px: 0.4 },
+  { maxCols: Infinity, font: 14, py: 0.4, px: 0.2 },
+];
 
 function fitTable() {
   const wrap = resultBodyEl.querySelector('.table-wrap');
   if (!wrap || !wrap.clientWidth) return;
   const table = wrap.firstChild;
-  let size = TABLE_FONT_MAX;
-  for (let i = 0; i < 4; i++) {
+  const cols = table.rows[0].cells.length;
+  const base = TABLE_SIZES.find((s) => cols <= s.maxCols);
+  wrap.style.setProperty('--py', base.py + 'em');
+  wrap.style.setProperty('--px', base.px + 'em');
+  let size = base.font;
+  for (let i = 0; i < 5; i++) {
     wrap.style.fontSize = size + 'px';
     const width = table.getBoundingClientRect().width;
     if (width <= wrap.clientWidth || size === TABLE_FONT_MIN) return;
@@ -984,7 +993,13 @@ resetBtn.addEventListener('click', () => {
   render();
 });
 
-window.addEventListener('resize', fitTable);
+// 창 크기뿐 아니라 컨테이너 폭이 바뀔 때(결과 카드가 처음 나타날 때 포함)도 다시 맞춘다. 높이 변화로는 다시 돌지 않게 폭만 본다.
+let fitWidth = 0;
+new ResizeObserver(([entry]) => {
+  if (entry.contentRect.width === fitWidth) return;
+  fitWidth = entry.contentRect.width;
+  fitTable();
+}).observe(resultBodyEl);
 
 Object.assign(state, load());
 nextRoundId = Math.max(0, ...state.rounds.map((r) => r.id)) + 1;
