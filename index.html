@@ -121,6 +121,9 @@ section + section { margin-top: 16px; }
 }
 .pick[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 .pick[aria-pressed="true"]::before { content: "\2713\00a0"; }
+.fixed-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 8px 0 0; }
+.fixed-row span { flex: 1 1 4em; min-width: 0; overflow-wrap: anywhere; }
+.fixed-row input { flex: 2 1 140px; background: var(--surface); }
 .summary { width: 100%; margin-top: 12px; }
 .result { border: 2px solid var(--accent); padding: 8px; }
 .result h2 { padding: 0 4px; }
@@ -279,11 +282,29 @@ function roundCard(round, i) {
     picks.append(pick);
   }
 
-  card.append(head, fields, pickHead, picks);
+  const fixedRows = round.participants.map((m) => {
+    const row = document.createElement('div');
+    row.className = 'fixed-row';
+    const who = document.createElement('span');
+    who.textContent = m;
+    const amount = document.createElement('input');
+    amount.type = 'text';
+    amount.inputMode = 'numeric';
+    amount.placeholder = '고정 금액(선택)';
+    amount.setAttribute('aria-label', n + ' ' + m + ' 고정 금액');
+    amount.autocomplete = 'off';
+    amount.dataset.key = k('fixed:' + m);
+    amount.dataset.member = m;
+    amount.value = round.fixed[m] ?? '';
+    row.append(who, amount);
+    return row;
+  });
+
+  card.append(head, fields, pickHead, picks, ...fixedRows);
   return card;
 }
 
-// 입력칸은 이름·총금액 input 이벤트가 상태만 고치고 다시 그리지 않는다. 구조가 바뀔 때만 여기서 카드를 새로 만들고, 포커스와 선택 범위를 data-key로 되찾는다.
+// 입력칸은 이름·총금액·고정 금액 input 이벤트가 상태만 고치고 다시 그리지 않는다. 구조가 바뀔 때만 여기서 카드를 새로 만들고, 포커스와 선택 범위를 data-key로 되찾는다.
 function renderRounds() {
   const active = document.activeElement;
   const hadFocus = roundsEl.contains(active);
@@ -428,7 +449,7 @@ function renderResult() {
   fitTable();
 }
 
-// 모든 상태 변경은 render를 거친다. 이름·총금액 input은 입력칸을 다시 그리면 포커스를 잃으므로 rounds: false로 결과만 갱신한다.
+// 모든 상태 변경은 render를 거친다. 이름·총금액·고정 금액 input은 입력칸을 다시 그리면 포커스를 잃으므로 rounds: false로 결과만 갱신한다.
 function render({ rounds = true } = {}) {
   renderMembers();
   if (rounds) renderRounds();
@@ -469,8 +490,23 @@ function calc(state) {
     else if (!valid) errors.push({ roundIndex, message: label + ': 총금액은 0보다 커야 해요' });
     if (!attendees.length) errors.push({ roundIndex, message: label + ': 참석자를 선택하세요' });
     if (!valid || !attendees.length) return null;
-    const dist = distribute(attendees, round.total);
-    return new Map(attendees.map((name, i) => [name, dist[i]]));
+    const pinned = attendees.filter((m) => m in round.fixed);
+    const free = attendees.filter((m) => !(m in round.fixed));
+    const pinnedSum = pinned.reduce((sum, m) => sum + round.fixed[m], 0);
+    const rest = round.total - pinnedSum;
+    if (rest < 0) {
+      errors.push({ roundIndex, message: label + ': 고정 금액의 합(' + won(pinnedSum) + '원)이 총금액보다 커요' });
+      return null;
+    }
+    if (!free.length && rest > 0) {
+      errors.push({ roundIndex, message: label + ': 모두 고정인데 합(' + won(pinnedSum) + '원)이 총금액과 달라요' });
+      return null;
+    }
+    const split = distribute(free, rest);
+    return new Map([
+      ...pinned.map((m) => [m, { amount: round.fixed[m], extra: false }]),
+      ...free.map((m, i) => [m, split[i]]),
+    ]);
   });
   if (errors.length) return { errors, rows: null, roundTotals: null, grandTotal: null };
 
@@ -483,8 +519,12 @@ function calc(state) {
 }
 
 // participants는 항상 members 순서로 다시 만든다. 순서를 보존하고 중복이 생길 수 없다.
+// 참석자에서 빠진 사람의 고정 금액도 여기서 지워, 다시 참석해도 예전 금액이 되살아나지 않는다.
 function setParticipants(round, picked) {
   round.participants = state.members.filter((m) => picked.has(m));
+  for (const name of Object.keys(round.fixed)) {
+    if (!round.participants.includes(name)) delete round.fixed[name];
+  }
 }
 
 function toggleParticipant(round, member) {
@@ -523,12 +563,13 @@ membersEl.addEventListener('click', (e) => {
     if (!confirm(`'${name}'을(를) 삭제하면 아래 차수의 참석자에서도 빠져요.\n${list}\n삭제할까요?`)) return;
   }
   state.members.splice(Number(btn.dataset.index), 1);
-  for (const [r] of hit) r.participants = r.participants.filter((m) => m !== name);
+  for (const [r] of hit) setParticipants(r, new Set(r.participants.filter((m) => m !== name)));
   render();
 });
 
 addRoundBtn.addEventListener('click', () => {
-  state.rounds.push({ id: nextRoundId++, name: '', total: null, participants: [], fixed: {} });
+  // 이름이 키라서 __proto__ 같은 이름도 일반 키로 쓰이도록 프로토타입 없는 객체로 둔다.
+  state.rounds.push({ id: nextRoundId++, name: '', total: null, participants: [], fixed: Object.create(null) });
   render();
 });
 
@@ -570,7 +611,11 @@ roundsEl.addEventListener('input', (e) => {
   // Number가 정확히 다루는 범위 안에 두려고 12자리로 자른다.
   const digits = input.value.replace(/\D/g, '').slice(0, 12);
   if (digits !== input.value) input.value = digits;
-  round.total = digits ? Number(digits) : null;
+  const amount = digits ? Number(digits) : null;
+  const member = input.dataset.member;
+  if (member === undefined) round.total = amount;
+  else if (amount === null) delete round.fixed[member];
+  else round.fixed[member] = amount;
   render({ rounds: false });
 });
 
