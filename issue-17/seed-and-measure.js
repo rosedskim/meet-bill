@@ -7,7 +7,7 @@ window.__seed = (kind) => {
     data = { title: '', members: ['문원','수민','동현','석현'], rounds: [mk(1, '', 100000, ['문원','수민','동현','석현'])] };
   } else {
     const rounds = [
-      mk(1, '초밥', 49300, ['문원','수민','동현'], { 수민: 28200 }),
+      mk(1, '초밥', 49300, ['수민','동현'], { 수민: 28200 }),
       mk(2, '보드게임', 36000, ['문원','수민','동현','석현','선진','일준']),
       mk(3, '보드게임음료', 21900, ['동현']),
       mk(4, '미미철판', 181000, all, { 주희: 20000 }),
@@ -15,10 +15,11 @@ window.__seed = (kind) => {
       mk(6, '편의점', 22700, ['수민','동현','석현','선진','범석']),
     ];
     if (kind === 'paid') {
-      rounds[0].sent = { 문원: true, 수민: true, 동현: true };
+      rounds[0].sent = { 수민: true, 동현: true };
       rounds[1].sent = { 문원: true, 수민: true, 동현: true, 석현: true, 선진: true, 일준: true };
       rounds[2].sent = { 동현: true };
       rounds[3].sent = { 문원: true, 주희: true };
+      rounds[4].sent = { 주희: true };
     }
     data = { title: kind === 'paid' ? '11월 번개 회식' : '', members: M, rounds };
   }
