@@ -121,9 +121,11 @@ section + section { margin-top: 16px; }
 }
 .pick[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 .pick[aria-pressed="true"]::before { content: "\2713\00a0"; }
-.fixed-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 8px 0 0; }
-.fixed-row span { flex: 1 1 4em; min-width: 0; overflow-wrap: anywhere; }
+.fixed-row, .paid-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 8px 0 0; }
+.fixed-row span, .paid-row span { flex: 1 1 4em; min-width: 0; overflow-wrap: anywhere; }
 .fixed-row input { flex: 2 1 140px; background: var(--surface); }
+.paid-row input { flex: 2 1 140px; }
+#paid h3 { margin: 16px 0 0; font-size: 1rem; }
 .summary { width: 100%; margin-top: 12px; }
 .result { border: 2px solid var(--accent); padding: 8px; }
 .result h2 { padding: 0 4px; }
@@ -139,9 +141,10 @@ th, td { padding: 0.3em 0.2em; border: 1px solid var(--border); text-align: righ
 thead th { text-align: center; vertical-align: bottom; background: var(--bg); }
 th[scope="row"] { text-align: left; padding-left: 0.4em; }
 tfoot th { font-weight: 600; }
-tfoot th, tfoot td, td:last-child { background: var(--bg); }
+tfoot th, tfoot td, td.total { background: var(--bg); }
 th span { display: block; }
 .round-name { max-width: 5.5em; margin-inline: auto; font-weight: 400; color: var(--muted); white-space: normal; overflow-wrap: anywhere; }
+.paid-head { max-width: 4.5em; margin-inline: auto; white-space: normal; }
 .extra { display: block; font-size: 0.75em; color: var(--accent); line-height: 1.1; }
 </style>
 </head>
@@ -156,6 +159,10 @@ th span { display: block; }
     </form>
     <p id="member-notice" class="notice" role="status"></p>
     <ul id="members" class="tags"></ul>
+    <div id="paid" hidden>
+      <h3>이미 보낸 금액</h3>
+      <div id="paid-rows"></div>
+    </div>
   </section>
   <section>
     <div class="section-head">
@@ -171,7 +178,8 @@ th span { display: block; }
   </section>
 </main>
 <script>
-const state = { members: [], rounds: [] };
+// 이름이 키라서 fixed와 같이 __proto__ 같은 이름도 일반 키로 쓰이도록 프로토타입 없는 객체로 둔다.
+const state = { members: [], rounds: [], paid: Object.create(null) };
 let memberNotice = '';
 let nextRoundId = 1;
 let summaryShown = false;
@@ -180,6 +188,8 @@ const form = document.getElementById('member-form');
 const nameInput = document.getElementById('member-name');
 const noticeEl = document.getElementById('member-notice');
 const membersEl = document.getElementById('members');
+const paidEl = document.getElementById('paid');
+const paidRowsEl = document.getElementById('paid-rows');
 const roundsEl = document.getElementById('rounds');
 const addRoundBtn = document.getElementById('add-round');
 const summarizeBtn = document.getElementById('summarize');
@@ -203,6 +213,24 @@ function renderMembers() {
     return li;
   });
   membersEl.replaceChildren(...tags);
+}
+
+function paidRow(name) {
+  const row = document.createElement('div');
+  row.className = 'paid-row';
+  const who = document.createElement('span');
+  who.textContent = name;
+  const amount = document.createElement('input');
+  amount.type = 'text';
+  amount.inputMode = 'numeric';
+  amount.placeholder = '이미 보낸 금액(선택)';
+  amount.setAttribute('aria-label', name + ' 이미 보낸 금액');
+  amount.autocomplete = 'off';
+  amount.dataset.key = 'paid:' + name;
+  amount.dataset.member = name;
+  amount.value = state.paid[name] ?? '';
+  row.append(who, amount);
+  return row;
 }
 
 function button(cls, text, label, key, action) {
@@ -304,22 +332,32 @@ function roundCard(round, i) {
   return card;
 }
 
-// 입력칸은 이름·총금액·고정 금액 input 이벤트가 상태만 고치고 다시 그리지 않는다. 구조가 바뀔 때만 여기서 카드를 새로 만들고, 포커스와 선택 범위를 data-key로 되찾는다.
-function renderRounds() {
+// 입력칸은 input 이벤트가 상태만 고치고 다시 그리지 않는다. 구조가 바뀔 때만 영역을 새로 만들고, 포커스와 선택 범위를 data-key로 되찾는다.
+function redraw(container, children, fallback) {
   const active = document.activeElement;
-  const hadFocus = roundsEl.contains(active);
+  const hadFocus = container.contains(active);
   const key = hadFocus ? active.dataset.key : null;
   const range = hadFocus && active.selectionStart !== undefined ? [active.selectionStart, active.selectionEnd] : null;
 
-  roundsEl.replaceChildren(...state.rounds.map(roundCard));
+  container.replaceChildren(...children);
 
   if (!hadFocus) return;
-  const next = [...roundsEl.querySelectorAll('[data-key]')].find((el) => el.dataset.key === key) ?? addRoundBtn;
+  const next = [...container.querySelectorAll('[data-key]')].find((el) => el.dataset.key === key) ?? fallback;
   next.focus();
   if (range && next.setSelectionRange) next.setSelectionRange(...range);
 }
 
+function renderRounds() {
+  redraw(roundsEl, state.rounds.map(roundCard), addRoundBtn);
+}
+
+function renderPaid() {
+  paidEl.hidden = !state.members.length;
+  redraw(paidRowsEl, state.members.map(paidRow), nameInput);
+}
+
 const won = (n) => n.toLocaleString('ko-KR');
+const remainingText = (n) => (n === 0 ? '완료' : n < 0 ? '환급 ' + won(-n) + '원' : won(n));
 
 function resultHead(round, i) {
   const th = document.createElement('th');
@@ -381,6 +419,18 @@ function resultTable(result) {
   sum.scope = 'col';
   sum.textContent = '합계';
   headRow.append(corner, ...state.rounds.map(resultHead), sum);
+  if (result.showPaid) {
+    const paid = document.createElement('th');
+    paid.scope = 'col';
+    const paidText = document.createElement('span');
+    paidText.className = 'paid-head';
+    paidText.textContent = '이미 보낸 금액';
+    paid.append(paidText);
+    const remaining = document.createElement('th');
+    remaining.scope = 'col';
+    remaining.textContent = '남은 금액';
+    headRow.append(paid, remaining);
+  }
   const thead = document.createElement('thead');
   thead.append(headRow);
 
@@ -391,8 +441,16 @@ function resultTable(result) {
     who.scope = 'row';
     who.textContent = row.name;
     const total = document.createElement('td');
+    total.className = 'total';
     total.textContent = won(row.total);
     tr.append(who, ...row.cells.map(resultCell), total);
+    if (result.showPaid) {
+      const paid = document.createElement('td');
+      paid.textContent = row.paid ? won(row.paid) : '-';
+      const remaining = document.createElement('td');
+      remaining.textContent = remainingText(row.remaining);
+      tr.append(paid, remaining);
+    }
     tbody.append(tr);
   }
 
@@ -406,6 +464,8 @@ function resultTable(result) {
     return td;
   });
   footRow.append(label, ...cells);
+  // 남은 금액의 합은 환급과 미납이 섞이고, 이미 보낸 금액의 합은 전체 합계 옆에서 정산 합계로 읽혀 둘 다 비운다.
+  if (result.showPaid) footRow.append(document.createElement('td'), document.createElement('td'));
   const tfoot = document.createElement('tfoot');
   tfoot.append(footRow);
 
@@ -449,10 +509,13 @@ function renderResult() {
   fitTable();
 }
 
-// 모든 상태 변경은 render를 거친다. 이름·총금액·고정 금액 input은 입력칸을 다시 그리면 포커스를 잃으므로 rounds: false로 결과만 갱신한다.
-function render({ rounds = true } = {}) {
+// 모든 상태 변경은 render를 거친다. 이름·총금액·고정 금액·이미 보낸 금액 input은 입력칸을 다시 그리면 포커스를 잃으므로 inputs: false로 결과만 갱신한다.
+function render({ inputs = true } = {}) {
   renderMembers();
-  if (rounds) renderRounds();
+  if (inputs) {
+    renderRounds();
+    renderPaid();
+  }
   renderResult();
 }
 
@@ -508,14 +571,17 @@ function calc(state) {
       ...free.map((m, i) => [m, split[i]]),
     ]);
   });
-  if (errors.length) return { errors, rows: null, roundTotals: null, grandTotal: null };
+  if (errors.length) return { errors, rows: null, roundTotals: null, grandTotal: null, showPaid: false };
 
   const rows = state.members.map((name) => {
     const cells = shares.map((s) => s.get(name) ?? null);
-    return { name, cells, total: cells.reduce((sum, c) => sum + (c ? c.amount : 0), 0) };
+    const total = cells.reduce((sum, c) => sum + (c ? c.amount : 0), 0);
+    const paid = state.paid[name] ?? 0;
+    return { name, cells, total, paid, remaining: total - paid };
   });
   const roundTotals = shares.map((_, r) => rows.reduce((sum, row) => sum + (row.cells[r] ? row.cells[r].amount : 0), 0));
-  return { errors, rows, roundTotals, grandTotal: roundTotals.reduce((a, b) => a + b, 0) };
+  const showPaid = rows.some((row) => row.paid > 0);
+  return { errors, rows, roundTotals, grandTotal: roundTotals.reduce((a, b) => a + b, 0), showPaid };
 }
 
 // participants는 항상 members 순서로 다시 만든다. 순서를 보존하고 중복이 생길 수 없다.
@@ -563,6 +629,7 @@ membersEl.addEventListener('click', (e) => {
     if (!confirm(`'${name}'을(를) 삭제하면 아래 차수의 참석자에서도 빠져요.\n${list}\n삭제할까요?`)) return;
   }
   state.members.splice(Number(btn.dataset.index), 1);
+  delete state.paid[name];
   for (const [r] of hit) setParticipants(r, new Set(r.participants.filter((m) => m !== name)));
   render();
 });
@@ -575,8 +642,22 @@ addRoundBtn.addEventListener('click', () => {
 
 summarizeBtn.addEventListener('click', () => {
   summaryShown = true;
-  render({ rounds: false });
+  render({ inputs: false });
   resultEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+
+function amountOf(input) {
+  // Number가 정확히 다루는 범위 안에 두려고 12자리로 자른다.
+  const digits = input.value.replace(/\D/g, '').slice(0, 12);
+  if (digits !== input.value) input.value = digits;
+  return digits ? Number(digits) : null;
+}
+
+paidRowsEl.addEventListener('input', (e) => {
+  const amount = amountOf(e.target);
+  if (amount === null) delete state.paid[e.target.dataset.member];
+  else state.paid[e.target.dataset.member] = amount;
+  render({ inputs: false });
 });
 
 function roundOf(el) {
@@ -605,18 +686,15 @@ roundsEl.addEventListener('input', (e) => {
   const round = state.rounds[roundOf(input)];
   if (input.classList.contains('name')) {
     round.name = input.value;
-    render({ rounds: false });
+    render({ inputs: false });
     return;
   }
-  // Number가 정확히 다루는 범위 안에 두려고 12자리로 자른다.
-  const digits = input.value.replace(/\D/g, '').slice(0, 12);
-  if (digits !== input.value) input.value = digits;
-  const amount = digits ? Number(digits) : null;
+  const amount = amountOf(input);
   const member = input.dataset.member;
   if (member === undefined) round.total = amount;
   else if (amount === null) delete round.fixed[member];
   else round.fixed[member] = amount;
-  render({ rounds: false });
+  render({ inputs: false });
 });
 
 window.addEventListener('resize', fitTable);
